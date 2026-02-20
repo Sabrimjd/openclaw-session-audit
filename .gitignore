@@ -1,0 +1,25 @@
+# State and runtime files
+state/
+*.pid
+*.backup
+
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+
+# Node modules (if any)
+node_modules/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
