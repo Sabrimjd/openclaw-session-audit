@@ -33,6 +33,16 @@ A daemon that monitors OpenClaw session files and sends **all events** to a Disc
 - Handles large session files (up to 10MB)
 - Thread and subagent support
 
+## Advantages Over Built-in Logging
+
+| Feature | Built-in Logger | Discord Audit Stream |
+|---------|-----------------|---------------------|
+| Remote visibility | ❌ Local files only | ✅ Real-time Discord |
+| Rich formatting | ❌ Plain text | ✅ Emoji, timestamps, diffs |
+| Team collaboration | ❌ Single machine | ✅ Shared Discord channel |
+| Centralized monitoring | ❌ Scattered logs | ✅ One channel for all |
+| Event types | ❌ Limited | ✅ 15+ event types |
+
 ## Installation
 
 ### Option 1: Clone to OpenClaw Hooks Directory
@@ -43,13 +53,19 @@ git clone https://github.com/Sabrimjd/discord-audit-stream.git
 cd discord-audit-stream
 ```
 
-### Option 2: Manual Install
+### Option 2: ClawHub (Coming Soon)
+
+```bash
+clawhub install discord-audit-stream
+openclaw hooks enable discord-audit-stream
+```
+
+### Option 3: Manual Install
 
 ```bash
 mkdir -p ~/.openclaw/hooks/discord-audit-stream
 cd ~/.openclaw/hooks/discord-audit-stream
 
-# Download files
 curl -O https://raw.githubusercontent.com/Sabrimjd/discord-audit-stream/master/daemon.ts
 curl -O https://raw.githubusercontent.com/Sabrimjd/discord-audit-stream/master/handler.ts
 curl -O https://raw.githubusercontent.com/Sabrimjd/discord-audit-stream/master/config.json
@@ -95,16 +111,14 @@ curl -O https://raw.githubusercontent.com/Sabrimjd/discord-audit-stream/master/.
 
 ## Running the Daemon
 
+### Auto-start (Recommended)
+
+The daemon starts automatically via OpenClaw's hook system on `gateway:startup`.
+
 ### Manual Start
 
 ```bash
 cd ~/.openclaw/hooks/discord-audit-stream
-node daemon.ts
-```
-
-### Background Mode
-
-```bash
 node daemon.ts &
 ```
 
@@ -118,55 +132,6 @@ kill $(cat state/daemon.pid)
 
 ```bash
 kill $(cat state/daemon.pid) 2>/dev/null; sleep 1; node daemon.ts &
-```
-
-## Systemd Service (Recommended)
-
-### 1. Create Service File
-
-```bash
-sudo nano /etc/systemd/system/discord-audit-stream.service
-```
-
-### 2. Paste Configuration
-
-```ini
-[Unit]
-Description=Discord Audit Stream - OpenClaw session monitor
-Documentation=https://github.com/Sabrimjd/discord-audit-stream
-After=network.target
-
-[Service]
-Type=simple
-User=sab
-Group=sab
-WorkingDirectory=/home/sab/.openclaw/hooks/discord-audit-stream
-ExecStart=/usr/bin/node daemon.ts
-Restart=on-failure
-RestartSec=10
-
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=discord-audit-stream
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### 3. Enable and Start
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable discord-audit-stream
-sudo systemctl start discord-audit-stream
-sudo systemctl status discord-audit-stream
-```
-
-### 4. View Logs
-
-```bash
-journalctl -u discord-audit-stream -f
 ```
 
 ## Message Format
@@ -245,16 +210,17 @@ opencode run --model zai/glm-5 "Review the Discord hook..."
 
 ```
 discord-audit-stream/
-├── daemon.ts          # Main daemon code
-├── handler.ts         # Hook handler (starts daemon)
-├── config.json        # Configuration file
-├── .env.example       # Environment variable template
-├── .gitignore         # Git ignore rules
-├── LICENSE            # MIT License
-├── README.md          # This file
+├── HOOK.md           # Hook metadata for OpenClaw
+├── daemon.ts         # Main daemon code
+├── handler.ts        # Hook handler (starts daemon)
+├── config.json       # Configuration file
+├── .env.example      # Environment variable template
+├── .gitignore        # Git ignore rules
+├── LICENSE           # MIT License
+├── README.md         # This file
 └── state/
-    ├── state.json     # Offsets & seen IDs
-    └── daemon.pid     # Current daemon PID
+    ├── state.json    # Offsets & seen IDs
+    └── daemon.pid    # Current daemon PID
 ```
 
 ## State Structure
@@ -309,7 +275,7 @@ if (!["user_message", "assistant_complete"].includes(event.type)) continue;
 ### No messages appearing
 1. Check webhook URL is set in `config.json`
 2. Verify daemon is running: `cat state/daemon.pid`
-3. Check logs: `journalctl -u discord-audit-stream -n 50`
+3. Check process: `ps aux | grep daemon.ts`
 
 ### Session file too large
 - Increase `maxFileSize` in `config.json` (default: 10MB)
