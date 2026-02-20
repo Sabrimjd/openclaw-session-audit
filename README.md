@@ -46,8 +46,8 @@ cd discord-audit-stream
 ### Option 2: Manual Install
 
 ```bash
-# Create hooks directory if needed
 mkdir -p ~/.openclaw/hooks/discord-audit-stream
+cd ~/.openclaw/hooks/discord-audit-stream
 
 # Download files
 curl -O https://raw.githubusercontent.com/Sabrimjd/discord-audit-stream/master/daemon.ts
@@ -145,9 +145,6 @@ ExecStart=/usr/bin/node daemon.ts
 Restart=on-failure
 RestartSec=10
 
-# Environment (optional - can also use config.json)
-# Environment="DISCORD_AUDIT_WEBHOOK_URL=https://discord.com/api/webhooks/..."
-
 # Logging
 StandardOutput=journal
 StandardError=journal
@@ -160,35 +157,16 @@ WantedBy=multi-user.target
 ### 3. Enable and Start
 
 ```bash
-# Reload systemd
 sudo systemctl daemon-reload
-
-# Enable on boot
 sudo systemctl enable discord-audit-stream
-
-# Start now
 sudo systemctl start discord-audit-stream
-
-# Check status
 sudo systemctl status discord-audit-stream
 ```
 
 ### 4. View Logs
 
 ```bash
-# Follow logs
 journalctl -u discord-audit-stream -f
-
-# Recent logs
-journalctl -u discord-audit-stream -n 50
-```
-
-### Manage Service
-
-```bash
-sudo systemctl restart discord-audit-stream
-sudo systemctl stop discord-audit-stream
-sudo systemctl status discord-audit-stream
 ```
 
 ## Message Format
@@ -215,20 +193,21 @@ opencode run --model zai/glm-5 "Review the Discord hook..."
 
 ### Header Breakdown
 
-```
-🦞[project-name] (model-id) [subagent] [thread:N] 👤key | 📁cwd | 📊tokens | 🧠level | 🖥️surface | 🔌provider | ⏰time | 🔗groupId
-│    │              │           │          │        │        │            │          │           │          │
-│    │              │           │          │        │            │          │           │          └── Group ID
-│    │              │           │          │        │            │          │           └── Last updated
-│    │              │           │          │        │            │          └── Provider
-│    │              │           │          │        │            └── Surface (webchat, discord, telegram)
-│    │              │           │          │        └── Token usage: 62k/262k (24%)
-│    │              │           │          └── Thread number
-│    │              │           └── Subagent tag
-│    │              └── LLM model
-│    └── Project folder name
-└── Agent emoji
-```
+| Position | Field | Example |
+|----------|-------|---------|
+| 1 | Agent emoji | 🦞 |
+| 2 | Project name | [clawd] |
+| 3 | Model ID | (glm-4.7) |
+| 4 | Subagent tag | [subagent] |
+| 5 | Thread tag | [thread:613] |
+| 6 | Session type + key | 👤agent:main:main:thread:613 |
+| 7 | Working directory | 📁/home/sab/clawd |
+| 8 | Token usage | 📊62k/262k (24%) |
+| 9 | Thinking level | 🧠high |
+| 10 | Surface | 🖥️discord |
+| 11 | Provider | 🔌discord |
+| 12 | Last update | ⏰21:28 |
+| 13 | Group ID | 🔗14744525 |
 
 ## Session Types
 
