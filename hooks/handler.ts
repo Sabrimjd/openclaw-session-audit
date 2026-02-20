@@ -27,7 +27,7 @@ const handler = async () => {
     } catch {}
   }
 
-  const child = spawn("node", [join(__dirname, "daemon.ts")], {
+  const child = spawn("node", [join(__dirname, "..", "src", "daemon.ts")], {
     detached: true,
     stdio: "ignore",
     cwd: __dirname,

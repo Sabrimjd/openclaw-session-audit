@@ -51,20 +51,55 @@ Edit `config.json` or use environment variables:
 
 ```
 discord-audit-stream/
-├── HOOK.md           # This file
-├── daemon.ts         # Main daemon
-├── handler.ts        # Hook handler
-├── config.json       # Configuration
-└── state/            # Runtime state
-    ├── state.json    # Offsets & seen IDs
-    └── daemon.pid    # Process ID
+├── openclaw.plugin.json   # Plugin manifest
+├── index.ts               # Plugin entry point
+├── hooks/                 # Hooks directory
+│   ├── HOOK.md           # This file
+│   └── handler.ts        # Hook handler
+├── src/
+│   └── daemon.ts         # Main daemon
+├── config.json           # Configuration
+└── state/                # Runtime state
+    ├── state.json        # Offsets & seen IDs
+    └── daemon.pid        # Process ID
 ```
 
 ## Installation
 
+### Option 1: Install as Plugin (Recommended)
+
 ```bash
-cd ~/.openclaw/hooks
+openclaw plugins install @openclaw/discord-audit-stream
+```
+
+### Option 2: Manual Install
+
+```bash
+cd ~/.openclaw/extensions
 git clone https://github.com/Sabrimjd/discord-audit-stream.git
+```
+
+## Configuration
+
+Configure in your OpenClaw config:
+
+```json5
+{
+  plugins: {
+    entries: {
+      "discord-audit-stream": {
+        enabled: true,
+        config: {
+          webhookUrl: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN",
+          fallbackChannelId: "YOUR_CHANNEL_ID",
+          rateLimitMs: 2000,
+          batchWindowMs: 8000,
+          agentEmojis: { "clawd": "🦞" }
+        }
+      }
+    }
+  }
+}
 ```
 
 ## Usage
@@ -74,10 +109,10 @@ The hook starts automatically when OpenClaw gateway starts.
 Manual control:
 ```bash
 # Start
-node ~/.openclaw/hooks/discord-audit-stream/daemon.ts &
+node ~/.openclaw/extensions/discord-audit-stream/src/daemon.ts &
 
 # Stop
-kill $(cat ~/.openclaw/hooks/discord-audit-stream/state/daemon.pid)
+kill $(cat ~/.openclaw/extensions/discord-audit-stream/state/daemon.pid)
 ```
 
 ## GitHub

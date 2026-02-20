@@ -47,24 +47,53 @@ A daemon that monitors OpenClaw session files and sends **all events** to a Disc
 
 ## Installation
 
-### Option 1: Clone to OpenClaw Hooks Directory
+### Option 1: Install as Plugin (Recommended)
 
 ```bash
-cd ~/.openclaw/hooks
+openclaw plugins install @openclaw/discord-audit-stream
+```
+
+Then configure in your OpenClaw config:
+
+```json5
+{
+  plugins: {
+    entries: {
+      "discord-audit-stream": {
+        enabled: true,
+        config: {
+          webhookUrl: "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN",
+          fallbackChannelId: "YOUR_CHANNEL_ID",
+          rateLimitMs: 2000,
+          batchWindowMs: 8000,
+          agentEmojis: {
+            "clawd": "🦞"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Option 2: Manual Install (Legacy)
+
+```bash
+cd ~/.openclaw/extensions
 git clone https://github.com/Sabrimjd/discord-audit-stream.git
 cd discord-audit-stream
 ```
 
-### Option 2: Manual Install
+Then enable in config:
 
-```bash
-mkdir -p ~/.openclaw/hooks/discord-audit-stream
-cd ~/.openclaw/hooks/discord-audit-stream
-
-curl -O https://raw.githubusercontent.com/Sabrimjd/discord-audit-stream/master/daemon.ts
-curl -O https://raw.githubusercontent.com/Sabrimjd/discord-audit-stream/master/handler.ts
-curl -O https://raw.githubusercontent.com/Sabrimjd/discord-audit-stream/master/config.json
-curl -O https://raw.githubusercontent.com/Sabrimjd/discord-audit-stream/master/.env.example
+```json5
+{
+  plugins: {
+    entries: {
+      "discord-audit-stream": { enabled: true }
+    }
+  }
+}
 ```
 
 ## Configuration
@@ -113,8 +142,8 @@ The daemon starts automatically via OpenClaw's hook system on `gateway:startup`.
 ### Manual Start
 
 ```bash
-cd ~/.openclaw/hooks/discord-audit-stream
-node daemon.ts &
+cd ~/.openclaw/extensions/discord-audit-stream
+node src/daemon.ts &
 ```
 
 ### Stop Daemon
@@ -126,7 +155,7 @@ kill $(cat state/daemon.pid)
 ### Restart Daemon
 
 ```bash
-kill $(cat state/daemon.pid) 2>/dev/null; sleep 1; node daemon.ts &
+kill $(cat state/daemon.pid) 2>/dev/null; sleep 1; node src/daemon.ts &
 ```
 
 ## Message Format
@@ -205,17 +234,22 @@ opencode run --model zai/glm-5 "Review the Discord hook..."
 
 ```
 discord-audit-stream/
-├── HOOK.md           # Hook metadata for OpenClaw
-├── daemon.ts         # Main daemon code
-├── handler.ts        # Hook handler (starts daemon)
-├── config.json       # Configuration file
-├── .env.example      # Environment variable template
-├── .gitignore        # Git ignore rules
-├── LICENSE           # MIT License
-├── README.md         # This file
-└── state/
-    ├── state.json    # Offsets & seen IDs
-    └── daemon.pid    # Current daemon PID
+├── openclaw.plugin.json   # Plugin manifest
+├── index.ts               # Plugin entry point
+├── package.json           # Package metadata
+├── hooks/                 # Hooks directory
+│   ├── HOOK.md           # Hook metadata for OpenClaw
+│   └── handler.ts        # Hook handler (starts daemon)
+├── src/
+│   └── daemon.ts         # Main daemon code
+├── config.json           # Configuration file
+├── .env.example          # Environment variable template
+├── .gitignore            # Git ignore rules
+├── LICENSE               # MIT License
+├── README.md             # This file
+└── state/                # Runtime state
+    ├── state.json        # Offsets & seen IDs
+    └── daemon.pid        # Current daemon PID
 ```
 
 ## State Structure

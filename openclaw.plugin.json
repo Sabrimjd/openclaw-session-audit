@@ -1,0 +1,65 @@
+{
+  "id": "discord-audit-stream",
+  "name": "Discord Audit Stream",
+  "version": "1.0.0",
+  "description": "Monitors OpenClaw session files and sends all events to a Discord channel via webhook",
+  "main": "index.ts",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "webhookUrl": {
+        "type": "string",
+        "description": "Discord webhook URL"
+      },
+      "fallbackChannelId": {
+        "type": "string",
+        "description": "Fallback Discord channel ID"
+      },
+      "rateLimitMs": {
+        "type": "number",
+        "default": 2000,
+        "description": "Rate limit in milliseconds"
+      },
+      "batchWindowMs": {
+        "type": "number",
+        "default": 8000,
+        "description": "Batch window in milliseconds"
+      },
+      "maxBatchSize": {
+        "type": "number",
+        "default": 15,
+        "description": "Maximum batch size"
+      },
+      "agentEmojis": {
+        "type": "object",
+        "default": { "clawd": "🦞" },
+        "description": "Emoji mappings for agents"
+      }
+    },
+    "required": ["webhookUrl"]
+  },
+  "uiHints": {
+    "webhookUrl": {
+      "label": "Discord Webhook URL",
+      "sensitive": true,
+      "placeholder": "https://discord.com/api/webhooks/..."
+    },
+    "fallbackChannelId": {
+      "label": "Fallback Channel ID",
+      "placeholder": "1234567890"
+    },
+    "rateLimitMs": {
+      "label": "Rate Limit (ms)"
+    },
+    "batchWindowMs": {
+      "label": "Batch Window (ms)"
+    },
+    "maxBatchSize": {
+      "label": "Max Batch Size"
+    },
+    "agentEmojis": {
+      "label": "Agent Emojis"
+    }
+  }
+}
