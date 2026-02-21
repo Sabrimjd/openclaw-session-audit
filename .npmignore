@@ -1,0 +1,16 @@
+# Development files
+.git/
+.github/
+.gitignore
+*.backup
+*.test.ts
+*.spec.ts
+
+# State files
+state/
+
+# Example files
+.env.example
+
+# Documentation extras
+pic/

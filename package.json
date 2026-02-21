@@ -1,8 +1,9 @@
 {
-  "name": "@openclaw/discord-audit-stream",
+  "name": "discord-audit-stream",
   "version": "1.0.0",
   "description": "Monitors OpenClaw session files and sends all events to a Discord channel via webhook",
   "main": "index.ts",
+  "types": "index.ts",
   "openclaw": {
     "extensions": ["./index.ts"]
   },
@@ -12,13 +13,14 @@
     "audit",
     "logging",
     "monitoring",
-    "ai-agent"
+    "ai-agent",
+    "openclaw-plugin"
   ],
   "author": "Sabri MJD",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Sabrimjd/discord-audit-stream.git"
+    "url": "git+https://github.com/Sabrimjd/discord-audit-stream.git"
   },
   "bugs": {
     "url": "https://github.com/Sabrimjd/discord-audit-stream/issues"
@@ -35,5 +37,9 @@
     "config.json",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }
