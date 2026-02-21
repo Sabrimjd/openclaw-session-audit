@@ -39,7 +39,7 @@ function isProcessRunning(pid: number): boolean {
 
 function startDaemon(api: OpenClawPluginApi) {
   ensureStateDir();
-  
+
   if (existsSync(PID_FILE)) {
     try {
       const pid = parseInt(readFileSync(PID_FILE, "utf8").trim(), 10);
@@ -52,24 +52,26 @@ function startDaemon(api: OpenClawPluginApi) {
   }
 
   const config = getConfig(api);
-  
+
   if (!config.channel || !config.targetId) {
     api.logger.warn(`[session-audit] Missing required config: channel and targetId`);
     return;
   }
 
-  const env: Record<string, string> = { ...process.env };
+  const env: Record<string, string> = { ...process.env as Record<string, string> };
   env.SESSION_AUDIT_CHANNEL = config.channel;
   env.SESSION_AUDIT_TARGET_ID = config.targetId;
   if (config.rateLimitMs) env.SESSION_AUDIT_RATE_LIMIT_MS = String(config.rateLimitMs);
   if (config.batchWindowMs) env.SESSION_AUDIT_BATCH_WINDOW_MS = String(config.batchWindowMs);
   if (config.agentEmojis) env.SESSION_AUDIT_AGENT_EMOJIS = JSON.stringify(config.agentEmojis);
 
-  const child = spawn("node", [join(__dirname, "src", "daemon.ts")], {
+  // Use tsx to run TypeScript directly with ESM support
+  const child = spawn("npx", ["tsx", join(__dirname, "src", "index.ts")], {
     detached: true,
     stdio: "ignore",
     cwd: __dirname,
     env,
+    shell: true,
   });
 
   child.unref();

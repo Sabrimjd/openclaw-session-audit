@@ -1,0 +1,349 @@
+/**
+ * File watching and tailing logic
+ */
+
+import { createReadStream, readdirSync, readFileSync, watch } from "node:fs";
+import { stat } from "node:fs/promises";
+import { join } from "node:path";
+import { createInterface } from "node:readline";
+import { SESSIONS_DIR, MAX_FILE_SIZE } from "./config.js";
+import { state, hasSeenId } from "./state.js";
+import { sessionMetadata, getBaseSessionId, getThreadNumber, loadSessionsJson } from "./metadata.js";
+import { addEvent, pendingEvents, toolCallTimestamps } from "./events.js";
+import { parseDiffStats, extractSenderName } from "./format.js";
+import type { PendingEvent } from "./types.js";
+
+export async function tailFile(filename: string): Promise<void> {
+  if (!filename.endsWith(".jsonl")) return;
+  const filepath = join(SESSIONS_DIR, filename);
+
+  let fileStat: Awaited<ReturnType<typeof stat>>;
+  try {
+    fileStat = await stat(filepath);
+    if (fileStat.size > MAX_FILE_SIZE) return;
+  } catch {
+    return;
+  }
+
+  // Skip history: for new files, start at end
+  if (state.offsets[filename] === undefined) {
+    state.offsets[filename] = fileStat.size;
+  }
+  const offset = state.offsets[filename];
+  const baseSessionId = getBaseSessionId(filename);
+  const threadNumber = getThreadNumber(filename);
+  const sessionKey = baseSessionId;
+
+  try {
+    const stream = createReadStream(filepath, { start: offset, encoding: "utf8" });
+    const rl = createInterface({ input: stream });
+    let newOffset = offset;
+
+    for await (const line of rl) {
+      if (!line.trim()) continue;
+      newOffset += Buffer.byteLength(line, "utf8") + 1;
+
+      try {
+        const row = JSON.parse(line);
+        const rowType = row?.type;
+
+        // Parse session metadata
+        if (rowType === "session" && row?.cwd) {
+          const parts = row.cwd.split("/");
+          const projectName = parts[parts.length - 1] || sessionKey;
+          const existing = sessionMetadata.get(sessionKey);
+          if (existing) {
+            existing.cwd = row.cwd;
+            existing.projectName = projectName;
+          } else {
+            sessionMetadata.set(sessionKey, {
+              cwd: row.cwd,
+              projectName,
+              model: "",
+              chatType: "unknown",
+              key: "",
+            });
+          }
+        }
+
+        // Track thinking level changes
+        if (rowType === "thinking_level_change") {
+          const level = row.thinkingLevel || "unknown";
+          const existing = sessionMetadata.get(sessionKey);
+          if (existing) existing.thinkingLevel = level;
+
+          const id = `thinking_level:${row.id || Date.now()}`;
+          if (!hasSeenId(id)) {
+            addEvent(sessionKey, {
+              type: "thinking_level",
+              id,
+              sessionKey,
+              timestamp: new Date(row.timestamp).getTime(),
+              data: { level },
+              threadNumber: threadNumber || undefined,
+            });
+          }
+        }
+
+        // Track model changes
+        if (rowType === "model_change" && row?.modelId) {
+          const existing = sessionMetadata.get(sessionKey);
+          const oldModel = existing?.model || "";
+          const newModel = row.modelId;
+          if (existing) existing.model = newModel;
+
+          const id = `model_change:${row.id || Date.now()}`;
+          if (!hasSeenId(id)) {
+            addEvent(sessionKey, {
+              type: "model_change",
+              id,
+              sessionKey,
+              timestamp: new Date(row.timestamp).getTime(),
+              data: { oldModel, newModel },
+              threadNumber: threadNumber || undefined,
+            });
+          }
+        }
+
+        // Track token usage
+        if (row?.message?.usage?.totalTokens) {
+          const existing = sessionMetadata.get(sessionKey);
+          if (existing) {
+            existing.usedTokens = row.message.usage.totalTokens;
+          }
+        }
+
+        const message = row?.message;
+        if (!message) continue;
+
+        // Track user messages
+        if (message.role === "user" && Array.isArray(message.content)) {
+          const textItem = message.content.find((c: { type?: string }) => c.type === "text");
+          let text = textItem?.text || "";
+
+          // Extract actual user message from metadata-wrapped Discord messages
+          const userTextMatch = text.match(/\[Image\]\s*User text:\s*([\s\S]+)/);
+          if (userTextMatch) {
+            text = userTextMatch[1].trim();
+          } else if (text.includes("Conversation info (untrusted metadata)")) {
+            const parts = text.split(/```/);
+            if (parts.length > 1) {
+              const lastPart = parts[parts.length - 1].trim();
+              if (lastPart && !lastPart.includes("metadata") && lastPart !== "...." && lastPart.length > 5) {
+                text = lastPart;
+              } else {
+                text = "";
+              }
+            } else {
+              text = "";
+            }
+          }
+
+          const sender = extractSenderName(message.content);
+
+          const id = `user_message:${row.id || Date.now()}`;
+          if (!hasSeenId(id)) {
+            addEvent(sessionKey, {
+              type: "user_message",
+              id,
+              sessionKey,
+              timestamp: new Date(row.timestamp).getTime(),
+              data: { sender, preview: text },
+              threadNumber: threadNumber || undefined,
+            });
+          }
+        }
+
+        // Track assistant messages
+        if (message.role === "assistant") {
+          // Track thinking content
+          if (Array.isArray(message.content)) {
+            for (const item of message.content) {
+              if (item?.type === "thinking" && (item as { thinking?: string }).thinking) {
+                const thinking = (item as { thinking: string }).thinking;
+                const id = `thinking:${row.id}:${thinking.slice(0, 50)}`;
+                if (!hasSeenId(id)) {
+                  addEvent(sessionKey, {
+                    type: "thinking",
+                    id,
+                    sessionKey,
+                    timestamp: new Date(row.timestamp).getTime(),
+                    data: { preview: thinking },
+                    threadNumber: threadNumber || undefined,
+                  });
+                }
+              }
+
+              // Track tool calls
+              if (item?.type === "toolCall") {
+                const toolItem = item as { id?: string; name?: string; arguments?: Record<string, unknown> };
+                const name = String(toolItem.name || "");
+                const args = toolItem.arguments || {};
+                const toolId = String(toolItem.id || "").trim() || `${name}:${JSON.stringify(args).slice(0, 100)}`;
+
+                if (!hasSeenId(toolId)) {
+                  toolCallTimestamps.set(toolId, { timestamp: new Date(row.timestamp).getTime(), sessionKey });
+
+                  addEvent(sessionKey, {
+                    type: "toolCall",
+                    id: toolId,
+                    sessionKey,
+                    timestamp: new Date(row.timestamp).getTime(),
+                    data: {
+                      name,
+                      args,
+                      isError: false,
+                      durationMs: null,
+                    },
+                    threadNumber: threadNumber || undefined,
+                  });
+                }
+              }
+            }
+          }
+
+          // Track completion
+          if (message.stopReason === "stop" || message.stopReason === "end_turn") {
+            const id = `complete:${row.id || Date.now()}`;
+            if (!hasSeenId(id)) {
+              let messagePreview = "";
+              if (Array.isArray(message.content)) {
+                const textItem = message.content.find((c: { type?: string }) => c.type === "text");
+                messagePreview = (textItem as { text?: string })?.text || "";
+              }
+
+              addEvent(sessionKey, {
+                type: "assistant_complete",
+                id,
+                sessionKey,
+                timestamp: new Date(row.timestamp).getTime(),
+                data: {
+                  tokens: message.usage?.totalTokens,
+                  stopReason: message.stopReason,
+                  messagePreview,
+                },
+                threadNumber: threadNumber || undefined,
+              });
+            }
+          }
+        }
+
+        // Track tool results - update existing tool call event
+        if (message.role === "toolResult" && message.toolCallId) {
+          const toolCallId = message.toolCallId;
+          const callInfo = toolCallTimestamps.get(toolCallId);
+          if (callInfo) {
+            // Find and update the pending tool call
+            const groupKey = threadNumber ? `${sessionKey}-topic-${threadNumber}` : sessionKey;
+            const events = pendingEvents.get(groupKey);
+            if (events) {
+              const toolEvent = events.find(e => e.id === toolCallId && (e.type === "toolCall" || e.type === "tool_call"));
+              if (toolEvent) {
+                const data = toolEvent.data;
+                data.isError = message.isError === true;
+
+                // Parse diff stats for edits
+                if (message.details?.diff && (data.name === "edit" || data.name === "write")) {
+                  data.diffStats = parseDiffStats(message.details.diff);
+                }
+
+                const resultTs = new Date(row.timestamp).getTime();
+                if (message.details?.durationMs) {
+                  data.durationMs = message.details.durationMs;
+                } else if (resultTs && toolEvent.timestamp) {
+                  data.durationMs = resultTs - toolEvent.timestamp;
+                }
+              }
+            }
+          }
+        }
+      } catch { /* skip unparseable */ }
+    }
+    state.offsets[filename] = newOffset;
+  } catch (err) {
+    console.error(`[session-audit] Error reading ${filename}:`, err);
+  }
+}
+
+// Scan all files to build metadata before watching
+export async function scanAllFiles(): Promise<void> {
+  loadSessionsJson();
+
+  try {
+    const files = readdirSync(SESSIONS_DIR).filter((f: string) => f.endsWith(".jsonl"));
+    for (const file of files) {
+      const filepath = join(SESSIONS_DIR, file);
+      try {
+        const content = readFileSync(filepath, "utf8");
+        const lines = content.split("\n");
+        const sessionKey = getBaseSessionId(file);
+        const existing = sessionMetadata.get(sessionKey);
+        let projectName = existing?.projectName || sessionKey.slice(0, 8);
+        let cwd = existing?.cwd || "";
+        const chatType = existing?.chatType || "unknown";
+        let model = existing?.model || "";
+        const key = existing?.key || "";
+        const contextTokens = existing?.contextTokens;
+        let usedTokens = existing?.usedTokens;
+        const provider = existing?.provider;
+        const surface = existing?.surface;
+        const updatedAt = existing?.updatedAt;
+        const groupId = existing?.groupId;
+        let thinkingLevel = existing?.thinkingLevel;
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const row = JSON.parse(line);
+            if (row?.type === "session" && row?.cwd) {
+              const parts = row.cwd.split("/");
+              projectName = parts[parts.length - 1] || sessionKey;
+              cwd = row.cwd;
+            }
+            if (row?.type === "thinking_level_change") {
+              thinkingLevel = row.thinkingLevel;
+            }
+            if (row?.message?.usage?.totalTokens) {
+              usedTokens = row.message.usage.totalTokens;
+            }
+            if (row?.type === "model_change" && row?.modelId) {
+              model = row.modelId;
+            }
+          } catch {}
+        }
+
+        sessionMetadata.set(sessionKey, {
+          cwd,
+          projectName,
+          model,
+          chatType,
+          key,
+          contextTokens,
+          usedTokens,
+          provider,
+          surface,
+          updatedAt,
+          groupId,
+          thinkingLevel
+        });
+      } catch {}
+
+      // Tail the file for new events
+      await tailFile(file);
+    }
+  } catch {}
+}
+
+export function startWatcher(): void {
+  try {
+    const watcher = watch(SESSIONS_DIR, (_eventType: string, filename: string | null) => {
+      if (filename && filename.endsWith(".jsonl")) {
+        tailFile(filename).catch(console.error);
+      }
+    });
+    watcher.on("error", (err: Error) => console.error("[session-audit] Watcher error:", err));
+    console.error("[session-audit] Watching", SESSIONS_DIR);
+  } catch (err) {
+    console.error("[session-audit] Failed to start watcher:", err);
+  }
+}

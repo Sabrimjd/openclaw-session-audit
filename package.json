@@ -2,10 +2,13 @@
   "name": "openclaw-session-audit",
   "version": "1.0.2",
   "description": "Monitor OpenClaw sessions and stream events to any channel (Discord, Telegram, Slack, etc.)",
+  "type": "module",
   "main": "index.ts",
   "types": "index.ts",
   "openclaw": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "keywords": [
     "openclaw",
@@ -43,5 +46,9 @@
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "typescript": "^5.9.3"
   }
 }

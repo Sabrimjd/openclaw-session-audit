@@ -1,0 +1,161 @@
+/**
+ * Formatting utilities
+ */
+
+import { TOOL_ICONS } from "./config.js";
+import type { PendingEvent, DiffStats } from "./types.js";
+
+export function truncateText(text: string, maxLen: number): string {
+  if (!text) return "";
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen - 3) + "...";
+}
+
+export function formatTimestamp(ts: number): string {
+  const d = new Date(ts);
+  const h = d.getHours().toString().padStart(2, "0");
+  const m = d.getMinutes().toString().padStart(2, "0");
+  const s = d.getSeconds().toString().padStart(2, "0");
+  const ms = d.getMilliseconds().toString().padStart(3, "0");
+  return `${h}:${m}:${s}.${ms}`;
+}
+
+export function formatTimeOnly(ts: number | string): string {
+  const d = new Date(typeof ts === "string" ? parseInt(ts, 10) : ts);
+  const h = d.getHours().toString().padStart(2, "0");
+  const m = d.getMinutes().toString().padStart(2, "0");
+  return `${h}:${m}`;
+}
+
+export function formatDuration(ms: number | null): string {
+  if (ms === null || isNaN(ms) || ms <= 0) return "";
+  if (ms < 1000) return `(${ms}ms)`;
+  if (ms < 60000) return `(${(ms / 1000).toFixed(1)}s)`;
+  return `(${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s)`;
+}
+
+export function parseDiffStats(diff: string | undefined): DiffStats | undefined {
+  if (!diff) return undefined;
+  const lines = diff.split("\n");
+  let added = 0;
+  let removed = 0;
+  let addedChars = 0;
+  let removedChars = 0;
+  for (const line of lines) {
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      added++;
+      addedChars += line.length - 1;
+    }
+    if (line.startsWith("-") && !line.startsWith("---")) {
+      removed++;
+      removedChars += line.length - 1;
+    }
+  }
+  return (added > 0 || removed > 0) ? { added, removed, addedChars, removedChars } : undefined;
+}
+
+export function extractSenderName(content: unknown[]): string {
+  for (const item of content) {
+    if (item && typeof item === "object" && "type" in item && (item as { type?: string }).type === "text") {
+      const text = (item as { text?: string }).text || "";
+      const senderMatch = text.match(/"(?:label|name|username)":\s*"([^"]+)"/);
+      if (senderMatch) return senderMatch[1];
+    }
+  }
+  return "User";
+}
+
+export function formatEvent(event: PendingEvent): string | null {
+  const time = formatTimestamp(event.timestamp);
+  const { type, data } = event;
+  const errorPrefix = data.isError ? "❌ " : "";
+
+  if (type === "tool_call" || type === "call" || type === "toolCall") {
+    const name = String(data.name || "");
+    const icon = TOOL_ICONS[name] || "🔧";
+    const durationMs = data.durationMs as number | null;
+    const durationStr = formatDuration(durationMs);
+    const diffStats = data.diffStats as DiffStats | undefined;
+
+    if (name === "exec" || name === "bash") {
+      const cmd = String(data.command || (data.args as Record<string, unknown> | undefined)?.command || "");
+      return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${truncateText(cmd, 60)}`;
+    }
+    if (name === "edit" || name === "write") {
+      const path = String(data.path || data.file_path || (data.args as Record<string, unknown> | undefined)?.file_path || (data.args as Record<string, unknown> | undefined)?.path || "");
+      const summary = path || "(unknown)";
+      let diffStr = "";
+      if (diffStats) {
+        diffStr = ` (+${diffStats.added}/-${diffStats.removed} lines, +${diffStats.addedChars}/-${diffStats.removedChars} chars)`;
+      }
+      return `${time} ${errorPrefix}${icon} ${name}${durationStr}${diffStr}: \`${summary}\``;
+    }
+    if (name === "read") {
+      const path = String(data.path || data.file_path || (data.args as Record<string, unknown> | undefined)?.file_path || "");
+      return `${time} ${errorPrefix}${icon} read${durationStr}: \`${path || "(unknown)"}\``;
+    }
+    if (["grep_search", "glob_search", "grep", "glob"].includes(name)) {
+      const pattern = String(data.pattern || (data.args as Record<string, unknown> | undefined)?.pattern || "");
+      return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${truncateText(pattern, 40)}`;
+    }
+    if (["webfetch", "web_fetch", "web_search", "http", "http_request"].includes(name)) {
+      const url = String(data.url || (data.args as Record<string, unknown> | undefined)?.url || data.query || (data.args as Record<string, unknown> | undefined)?.query || "");
+      return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${truncateText(url, 50)}`;
+    }
+    return `${time} ${errorPrefix}${icon} ${name}${durationStr}`;
+  }
+
+  if (type === "user_message") {
+    const sender = String(data.sender || "User");
+    const preview = String(data.preview || data.text || "");
+    // Skip metadata-only messages
+    if (!preview || preview.trim() === "...." || preview.trim() === "") {
+      return null;
+    }
+    return `${time} 💬 ${sender}:\n\`\`\`\n${truncateText(preview, 300)}\n\`\`\``;
+  }
+
+  if (type === "assistant_complete" || type === "complete") {
+    const tokens = data.tokens as number | undefined;
+    const messagePreview = String(data.messagePreview || data.text || "");
+    let msg = `${time} ✅ Response completed`;
+    if (tokens) msg += ` (${tokens.toLocaleString()} tokens)`;
+    if (messagePreview) msg += `: "${truncateText(messagePreview.replace(/\n/g, " "), 80)}"`;
+    return msg;
+  }
+
+  if (type === "thinking") {
+    const preview = String(data.preview || data.text || "");
+    return `${time} 💭 Thinking: "${truncateText(preview.replace(/\n/g, " "), 80)}"`;
+  }
+
+  if (type === "thinking_level") {
+    const level = String(data.level || "unknown");
+    return `${time} 🧠 Thinking level: ${level}`;
+  }
+
+  if (type === "error") {
+    const msg = String(data.error || data.message || "Unknown error");
+    return `${time} ❌ Error: ${truncateText(msg, 100)}`;
+  }
+
+  if (type === "model_change") {
+    const oldModel = String(data.oldModel || "");
+    const newModel = String(data.newModel || data.to || data.model || "");
+    if (oldModel && newModel) {
+      return `${time} 🔄 Model changed: ${oldModel} → ${newModel}`;
+    }
+    return `${time} 🔄 Model: ${newModel}`;
+  }
+
+  if (type === "context_compaction" || type === "compaction") {
+    return `${time} 🗜️ Context compaction`;
+  }
+
+  if (type === "image") {
+    const mime = String(data.mimeType || data.mime_type || "image");
+    return `${time} 🖼️ Image: ${mime}`;
+  }
+
+  return `${time} 📌 ${type}`;
+}
