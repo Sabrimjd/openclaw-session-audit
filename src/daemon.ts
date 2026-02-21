@@ -877,14 +877,19 @@ async function tailFile(filename: string): Promise<void> {
   
   const filepath = join(SESSIONS_DIR, filename);
   
+  let fileStat: Awaited<ReturnType<typeof stat>>;
   try {
-    const s = await stat(filepath);
-    if (s.size > MAX_FILE_SIZE) return;
+    fileStat = await stat(filepath);
+    if (fileStat.size > MAX_FILE_SIZE) return;
   } catch {
     return;
   }
   
-  const offset = state.offsets[filename] ?? 0;
+  // Skip history: for new files, start at end (don't backfill)
+  if (state.offsets[filename] === undefined) {
+    state.offsets[filename] = fileStat.size;
+  }
+  const offset = state.offsets[filename];
   const baseSessionId = getBaseSessionId(filename);
   const threadNumber = getThreadNumber(filename);
   // Use base session ID as key for metadata lookup
