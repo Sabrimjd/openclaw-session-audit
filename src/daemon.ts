@@ -1235,7 +1235,7 @@ function scanAllFiles() {
       try {
         const content = readFileSync(filepath, "utf8");
         const lines = content.split("\n");
-        const sessionKey = file.replace(".jsonl", "");
+        const sessionKey = getBaseSessionId(file);
         const existing = sessionMetadata.get(sessionKey);
         let projectName = existing?.projectName || sessionKey;
         let cwd = existing?.cwd || "";
