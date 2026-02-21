@@ -303,6 +303,12 @@ function formatEvent(event: PendingEvent): string {
     return `${time} 🖼️ Image: ${mime}`;
   }
   
+  if (type === "tool_result") {
+    const toolName = (data.toolName as string) || "unknown";
+    const errorPrefix = data.isError ? "❌ " : "";
+    return `${time} ${errorPrefix}📋 ${toolName} result`;
+  }
+  
   return `${time} 📌 ${type}`;
 }
 
@@ -447,19 +453,54 @@ async function tailFile(filename: string): Promise<void> {
             data: { level: row.level }, id: eventId, sessionKey, threadNumber: threadNumber || undefined });
         }
         
-        if (rowType === "user_message") {
-          const eventId = `user_message:${sessionKey}:${row.timestamp || Date.now()}`;
-          if (!hasSeenId(eventId)) addEvent(sessionKey, { type: "user_message", timestamp: row.timestamp || Date.now(),
-            data: row, id: eventId, sessionKey, threadNumber: threadNumber || undefined });
-        }
-        
-        if (rowType === "assistant_complete" || rowType === "complete") {
-          const eventId = `complete:${sessionKey}:${row.timestamp || Date.now()}`;
-          if (!hasSeenId(eventId)) {
-            const existing = sessionMetadata.get(sessionKey);
-            if (existing && row.contextTokens) sessionMetadata.set(sessionKey, { ...existing, contextTokens: row.contextTokens });
-            addEvent(sessionKey, { type: "assistant_complete", timestamp: row.timestamp || Date.now(),
-              data: row, id: eventId, sessionKey, threadNumber: threadNumber || undefined });
+        // Handle message events (actual session format)
+        if (rowType === "message" && row?.message) {
+          const msg = row.message;
+          const msgRole = msg.role;
+          
+          // User messages
+          if (msgRole === "user") {
+            const eventId = `user_message:${sessionKey}:${row.id || row.timestamp || Date.now()}`;
+            if (!hasSeenId(eventId)) {
+              const text = msg.content?.[0]?.text || "";
+              addEvent(sessionKey, { type: "user_message", timestamp: row.timestamp || Date.now(),
+                data: { text, sender: msg.sender_name || "User" }, id: eventId, sessionKey, threadNumber: threadNumber || undefined });
+            }
+          }
+          
+          // Assistant messages with tool calls
+          if (msgRole === "assistant" && Array.isArray(msg.content)) {
+            for (const item of msg.content) {
+              if (item.type === "toolCall" && item.id) {
+                const eventId = `call_${item.id}`;
+                if (!hasSeenId(eventId)) {
+                  addEvent(sessionKey, { type: "tool_call", timestamp: row.timestamp || Date.now(),
+                    data: { name: item.name, arguments: item.arguments, callId: item.id }, 
+                    id: eventId, sessionKey, threadNumber: threadNumber || undefined });
+                }
+              }
+            }
+            
+            // Assistant completion (stopReason indicates done)
+            if (msg.stopReason === "stop" || msg.stopReason === "end_turn") {
+              const eventId = `complete:${sessionKey}:${row.id || row.timestamp || Date.now()}`;
+              if (!hasSeenId(eventId)) {
+                const text = msg.content?.find((c: any) => c.type === "text")?.text || "";
+                const tokens = msg.usage?.totalTokens;
+                addEvent(sessionKey, { type: "assistant_complete", timestamp: row.timestamp || Date.now(),
+                  data: { text, tokens }, id: eventId, sessionKey, threadNumber: threadNumber || undefined });
+              }
+            }
+          }
+          
+          // Tool results
+          if (msgRole === "toolResult" && msg.toolCallId) {
+            const eventId = `tool_result:${msg.toolCallId}`;
+            if (!hasSeenId(eventId)) {
+              addEvent(sessionKey, { type: "tool_result", timestamp: row.timestamp || Date.now(),
+                data: { toolName: msg.toolName, callId: msg.toolCallId, isError: msg.isError },
+                id: eventId, sessionKey, threadNumber: threadNumber || undefined });
+            }
           }
         }
         
