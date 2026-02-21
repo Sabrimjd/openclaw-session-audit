@@ -54,12 +54,69 @@ Add to your OpenClaw config (`~/.openclaw/config.json5`):
 
 | Option | Required | Description | Default |
 |--------|----------|-------------|---------|
-| `webhookUrl` | ✅ Yes | Discord webhook URL | - |
-| `fallbackChannelId` | ⚠️ Recommended | Fallback channel ID for openclaw CLI | - |
+| `webhookUrl` | ⚠️ See below | Discord webhook URL | - |
+| `fallbackChannelId` | ⚠️ See below | Channel ID for openclaw CLI fallback | - |
+| `sendMethod` | No | `"webhook"`, `"fallback"`, or `"auto"` | `"auto"` |
 | `rateLimitMs` | No | Rate limit between messages (ms) | 2000 |
 | `batchWindowMs` | No | Batch window for grouping events (ms) | 8000 |
 | `maxBatchSize` | No | Max events per batch | 15 |
 | `agentEmojis` | No | Emoji mappings for agents | `{ clawd: "🦞" }` |
+
+## Send Methods: Webhook vs Fallback
+
+The daemon supports two ways to send messages to Discord:
+
+### Webhook (Recommended)
+
+```json5
+{
+  sendMethod: "webhook",  // or "auto"
+  webhookUrl: "https://discord.com/api/webhooks/..."
+}
+```
+
+**Pros:**
+- ✅ Faster - direct HTTP POST
+- ✅ More reliable - no external dependency
+- ✅ Works without openclaw CLI installed
+- ✅ Better error handling
+- ✅ Lower resource usage
+
+**Cons:**
+- ❌ Requires creating a webhook in Discord
+- ❌ Limited to one channel per webhook
+
+### Fallback (OpenClaw CLI)
+
+```json5
+{
+  sendMethod: "fallback",
+  fallbackChannelId: "123456789"
+}
+```
+
+**Pros:**
+- ✅ No webhook setup needed
+- ✅ Can send to any channel you have access to
+- ✅ Uses existing openclaw authentication
+
+**Cons:**
+- ❌ Slower - spawns a subprocess
+- ❌ Requires openclaw CLI installed and authenticated
+- ❌ Higher resource usage
+- ❌ Less reliable (process spawn overhead)
+
+### Auto Mode (Default)
+
+```json5
+{
+  sendMethod: "auto",
+  webhookUrl: "https://discord.com/api/webhooks/...",
+  fallbackChannelId: "123456789"
+}
+```
+
+Tries webhook first, falls back to openclaw CLI if webhook fails. Best of both worlds for reliability.
 
 ### Environment Variables (Alternative)
 

@@ -16,9 +16,12 @@ const STATE_FILE = join(STATE_DIR, "state.json");
 const PID_FILE = join(STATE_DIR, "daemon.pid");
 const SESSIONS_JSON = join(SESSIONS_DIR, "sessions.json");
 
+type SendMethod = "webhook" | "fallback" | "auto";
+
 interface Config {
   webhookUrl: string;
   fallbackChannelId: string;
+  sendMethod: SendMethod;
   rateLimitMs: number;
   batchWindowMs: number;
   maxBatchSize: number;
@@ -31,7 +34,8 @@ interface Config {
 function loadConfig(): Config {
   const defaults: Config = {
     webhookUrl: "",
-    fallbackChannelId: "1474043146705830112",
+    fallbackChannelId: "",
+    sendMethod: "auto",
     rateLimitMs: 2000,
     batchWindowMs: 8000,
     maxBatchSize: 15,
@@ -56,6 +60,9 @@ function loadConfig(): Config {
   }
   if (process.env.DISCORD_AUDIT_CHANNEL_ID) {
     defaults.fallbackChannelId = process.env.DISCORD_AUDIT_CHANNEL_ID;
+  }
+  if (process.env.DISCORD_AUDIT_SEND_METHOD) {
+    defaults.sendMethod = process.env.DISCORD_AUDIT_SEND_METHOD as SendMethod;
   }
   if (process.env.DISCORD_AUDIT_RATE_LIMIT_MS) {
     defaults.rateLimitMs = parseInt(process.env.DISCORD_AUDIT_RATE_LIMIT_MS, 10);
@@ -672,9 +679,21 @@ function sendViaFallback(text: string) {
 
 async function sendMessage(text: string) {
   const truncated = truncateText(text, MAX_MESSAGE_LENGTH);
-  const success = await sendViaWebhook(truncated);
-  if (!success) {
-    sendViaFallback(truncated);
+  
+  switch (CONFIG.sendMethod) {
+    case "webhook":
+      await sendViaWebhook(truncated);
+      break;
+    case "fallback":
+      sendViaFallback(truncated);
+      break;
+    case "auto":
+    default:
+      const success = await sendViaWebhook(truncated);
+      if (!success) {
+        sendViaFallback(truncated);
+      }
+      break;
   }
 }
 

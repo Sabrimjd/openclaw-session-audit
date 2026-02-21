@@ -1,0 +1,14 @@
+{
+  "webhookUrl": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN",
+  "fallbackChannelId": "YOUR_CHANNEL_ID",
+  "sendMethod": "auto",
+  "rateLimitMs": 2000,
+  "batchWindowMs": 8000,
+  "maxBatchSize": 15,
+  "maxMessageLength": 1700,
+  "maxFileSize": 10000000,
+  "maxSeenIds": 5000,
+  "agentEmojis": {
+    "clawd": "🤖"
+  }
+}
