@@ -65,6 +65,12 @@ export function extractSenderName(content: unknown[]): string {
   return "User";
 }
 
+// Helper to safely extract arg values from data or args
+function getArg(data: Record<string, unknown>, key: string): string {
+  const args = data.args as Record<string, unknown> | undefined;
+  return String(data[key] || args?.[key] || "");
+}
+
 export function formatEvent(event: PendingEvent): string | null {
   const time = formatTimestamp(event.timestamp);
   const { type, data } = event;
@@ -102,6 +108,72 @@ export function formatEvent(event: PendingEvent): string | null {
       const url = String(data.url || (data.args as Record<string, unknown> | undefined)?.url || data.query || (data.args as Record<string, unknown> | undefined)?.query || "");
       return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${truncateText(url, 50)}`;
     }
+
+    // Process tool - shows action + sessionId
+    if (name === "process") {
+      const action = getArg(data, "action");
+      const sessionId = getArg(data, "sessionId");
+      return `${time} ${errorPrefix}${icon} process${durationStr}: ${action}${sessionId ? ` (${truncateText(sessionId, 20)})` : ""}`;
+    }
+
+    // Gateway tool - shows action
+    if (name === "gateway") {
+      const action = getArg(data, "action");
+      return `${time} ${errorPrefix}${icon} gateway${durationStr}: ${action || "call"}`;
+    }
+
+    // Sessions tools - shows action + label/target
+    if (name === "sessions_spawn") {
+      const label = getArg(data, "label");
+      const model = getArg(data, "model");
+      return `${time} ${errorPrefix}${icon} spawn${durationStr}: ${truncateText(label, 40)}${model ? ` [${model}]` : ""}`;
+    }
+    if (name === "sessions_list" || name === "sessions_history") {
+      const action = getArg(data, "action") || name.replace("sessions_", "");
+      return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${action}`;
+    }
+    if (name === "sessions_send") {
+      const target = getArg(data, "target");
+      return `${time} ${errorPrefix}${icon} send${durationStr}: ${truncateText(target, 30)}`;
+    }
+
+    // Message tool - shows channel + message preview
+    if (name === "message") {
+      const channel = getArg(data, "channel");
+      const message = getArg(data, "message");
+      return `${time} ${errorPrefix}${icon} message${durationStr}: ${channel}${message ? ` - ${truncateText(message, 40)}` : ""}`;
+    }
+
+    // Subagents tool - shows action + target
+    if (name === "subagents") {
+      const action = getArg(data, "action");
+      const target = getArg(data, "target");
+      const recent = getArg(data, "recentMinutes");
+      if (action === "list" && recent) {
+        return `${time} ${errorPrefix}${icon} subagents${durationStr}: list (last ${recent}m)`;
+      }
+      return `${time} ${errorPrefix}${icon} subagents${durationStr}: ${action}${target ? ` ${truncateText(target, 20)}` : ""}`;
+    }
+
+    // Cron tool - shows action + jobId
+    if (name === "cron") {
+      const action = getArg(data, "action");
+      const jobId = getArg(data, "jobId");
+      return `${time} ${errorPrefix}${icon} cron${durationStr}: ${action}${jobId ? ` (${truncateText(jobId, 20)})` : ""}`;
+    }
+
+    // Memory search - shows query
+    if (name === "memory_search") {
+      const query = getArg(data, "query");
+      return `${time} ${errorPrefix}${icon} memory${durationStr}: ${truncateText(query, 40)}`;
+    }
+
+    // Browser - shows url
+    if (name === "browser") {
+      const url = getArg(data, "url");
+      return `${time} ${errorPrefix}${icon} browser${durationStr}: ${truncateText(url, 50)}`;
+    }
+
     return `${time} ${errorPrefix}${icon} ${name}${durationStr}`;
   }
 

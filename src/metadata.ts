@@ -15,11 +15,16 @@ export function loadSessionsJson(): void {
     const data = JSON.parse(readFileSync(SESSIONS_JSON, "utf8"));
 
     for (const [key, value] of Object.entries(data)) {
-      const sessionData = value as { sessionId?: string; updatedAt?: number; contextTokens?: number };
-      if (sessionData.sessionId) {
+      if (!value || typeof value !== "object") continue;
+      const sessionData = value as Record<string, unknown>;
+      const sessionId = typeof sessionData.sessionId === "string" ? sessionData.sessionId : undefined;
+      const updatedAt = typeof sessionData.updatedAt === "number" ? sessionData.updatedAt : undefined;
+      const contextTokens = typeof sessionData.contextTokens === "number" ? sessionData.contextTokens : undefined;
+
+      if (sessionId) {
         // Parse key format: agent:<agent>:<surface>:<type>:<id>
         const parts = key.split(":");
-        const existing = sessionMetadata.get(sessionData.sessionId);
+        const existing = sessionMetadata.get(sessionId);
 
         let surface = "";
         let chatType = "unknown";
@@ -34,8 +39,8 @@ export function loadSessionsJson(): void {
           chatType = "direct";
         }
 
-        const updatedAt = sessionData.updatedAt
-          ? formatTimeOnly(sessionData.updatedAt)
+        const formattedUpdatedAt = updatedAt
+          ? formatTimeOnly(updatedAt)
           : "";
 
         if (existing) {
@@ -43,20 +48,20 @@ export function loadSessionsJson(): void {
           existing.chatType = chatType;
           existing.key = key;
           existing.surface = surface;
-          existing.updatedAt = updatedAt;
+          existing.updatedAt = formattedUpdatedAt;
           existing.groupId = groupId;
-          if (sessionData.contextTokens) existing.contextTokens = sessionData.contextTokens;
+          if (contextTokens) existing.contextTokens = contextTokens;
         } else {
-          sessionMetadata.set(sessionData.sessionId, {
+          sessionMetadata.set(sessionId, {
             cwd: "",
-            projectName: sessionData.sessionId.slice(0, 8),
+            projectName: sessionId.slice(0, 8),
             model: "",
             chatType,
             key,
-            contextTokens: sessionData.contextTokens,
+            contextTokens: contextTokens,
             provider: undefined,
             surface,
-            updatedAt,
+            updatedAt: formattedUpdatedAt,
             groupId,
             thinkingLevel: undefined,
           });

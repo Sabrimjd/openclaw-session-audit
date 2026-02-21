@@ -39,12 +39,16 @@ async function flushEvents(groupKey: string): Promise<void> {
 }
 
 function scheduleFlush(groupKey: string): void {
-  if (batchTimers.has(groupKey)) return;
   const events = pendingEvents.get(groupKey) || [];
   if (events.length >= MAX_BATCH_SIZE) {
+    // Clear existing timer before manual flush to prevent race condition
+    const existingTimer = batchTimers.get(groupKey);
+    if (existingTimer) clearTimeout(existingTimer);
+    batchTimers.delete(groupKey);
     flushEvents(groupKey).catch(console.error);
     return;
   }
+  if (batchTimers.has(groupKey)) return;
   const timer = setTimeout(() => {
     flushEvents(groupKey).catch(console.error);
   }, BATCH_WINDOW_MS);

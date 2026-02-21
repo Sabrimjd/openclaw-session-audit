@@ -36,13 +36,6 @@ export const TOOL_ICONS: Record<string, string> = {
   list_tasks: "📋", cancel_task: "🛑", list_agents: "📋", show_metrics: "📊",
 };
 
-export const EVENT_ICONS: Record<string, string> = {
-  user_message: "💬", assistant_complete: "✅", assistant_response: "✅",
-  thinking: "💭", thinking_level: "🧠", error: "❌", model_change: "🔄",
-  model_snapshot: "📸", context_compaction: "🗜️", image: "🖼️",
-  tool_call: "🔧", tool_result: "📋", complete: "✅",
-};
-
 export function loadConfig(): Config {
   const defaults: Config = {
     channel: "",
@@ -71,7 +64,9 @@ export function loadConfig(): Config {
   if (process.env.SESSION_AUDIT_AGENT_EMOJIS) {
     try {
       defaults.agentEmojis = JSON.parse(process.env.SESSION_AUDIT_AGENT_EMOJIS);
-    } catch {}
+    } catch (err) {
+      console.error("[session-audit] Failed to parse agent emojis:", err);
+    }
   }
 
   return defaults;

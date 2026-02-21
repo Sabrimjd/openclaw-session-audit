@@ -13,8 +13,12 @@ import { addEvent, pendingEvents, toolCallTimestamps } from "./events.js";
 import { parseDiffStats, extractSenderName } from "./format.js";
 import type { PendingEvent } from "./types.js";
 
+function isValidSessionFile(filename: string): boolean {
+  return /^[a-f0-9-]{36}(-topic-\d+)?\.jsonl$/.test(filename);
+}
+
 export async function tailFile(filename: string): Promise<void> {
-  if (!filename.endsWith(".jsonl")) return;
+  if (!isValidSessionFile(filename)) return;
   const filepath = join(SESSIONS_DIR, filename);
 
   let fileStat: Awaited<ReturnType<typeof stat>>;
@@ -257,7 +261,9 @@ export async function tailFile(filename: string): Promise<void> {
             }
           }
         }
-      } catch { /* skip unparseable */ }
+      } catch (err) {
+        console.error("[session-audit] Failed to parse line:", err);
+      }
     }
     state.offsets[filename] = newOffset;
   } catch (err) {
@@ -270,7 +276,7 @@ export async function scanAllFiles(): Promise<void> {
   loadSessionsJson();
 
   try {
-    const files = readdirSync(SESSIONS_DIR).filter((f: string) => f.endsWith(".jsonl"));
+    const files = readdirSync(SESSIONS_DIR).filter((f: string) => isValidSessionFile(f));
     for (const file of files) {
       const filepath = join(SESSIONS_DIR, file);
       try {
@@ -309,7 +315,9 @@ export async function scanAllFiles(): Promise<void> {
             if (row?.type === "model_change" && row?.modelId) {
               model = row.modelId;
             }
-          } catch {}
+          } catch (err) {
+            console.error("[session-audit] Failed to parse line during scan:", err);
+          }
         }
 
         sessionMetadata.set(sessionKey, {
@@ -326,18 +334,22 @@ export async function scanAllFiles(): Promise<void> {
           groupId,
           thinkingLevel
         });
-      } catch {}
+      } catch (err) {
+        console.error("[session-audit] Failed to read file during scan:", filepath, err);
+      }
 
       // Tail the file for new events
       await tailFile(file);
     }
-  } catch {}
+  } catch (err) {
+    console.error("[session-audit] Failed to scan files:", err);
+  }
 }
 
 export function startWatcher(): void {
   try {
     const watcher = watch(SESSIONS_DIR, (_eventType: string, filename: string | null) => {
-      if (filename && filename.endsWith(".jsonl")) {
+      if (filename && isValidSessionFile(filename)) {
         tailFile(filename).catch(console.error);
       }
     });
