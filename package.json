@@ -1,0 +1,47 @@
+{
+  "name": "openclaw-session-audit",
+  "version": "1.0.0",
+  "description": "Monitor OpenClaw sessions and stream events to any channel (Discord, Telegram, Slack, etc.)",
+  "main": "index.ts",
+  "types": "index.ts",
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  },
+  "keywords": [
+    "openclaw",
+    "audit",
+    "session",
+    "monitoring",
+    "logging",
+    "discord",
+    "telegram",
+    "slack",
+    "ai-agent",
+    "openclaw-plugin"
+  ],
+  "author": "Sabri MJD",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sabrimjd/openclaw-session-audit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Sabrimjd/openclaw-session-audit/issues"
+  },
+  "homepage": "https://github.com/Sabrimjd/openclaw-session-audit#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "index.ts",
+    "src/**/*",
+    "skills/**/*",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

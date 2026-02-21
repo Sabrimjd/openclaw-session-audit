@@ -1,0 +1,50 @@
+{
+  "id": "openclaw-session-audit",
+  "name": "Session Audit",
+  "version": "1.0.0",
+  "description": "Monitor OpenClaw sessions and stream events to any channel",
+  "main": "index.ts",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "channel": {
+        "type": "string",
+        "description": "OpenClaw channel name (discord, telegram, slack, etc.)"
+      },
+      "targetId": {
+        "type": "string",
+        "description": "Target ID (channel, group, or user ID)"
+      },
+      "rateLimitMs": {
+        "type": "number",
+        "default": 2000,
+        "description": "Rate limit between messages (ms)"
+      },
+      "batchWindowMs": {
+        "type": "number",
+        "default": 8000,
+        "description": "Batch window for grouping events (ms)"
+      },
+      "maxBatchSize": {
+        "type": "number",
+        "default": 15,
+        "description": "Maximum batch size"
+      },
+      "agentEmojis": {
+        "type": "object",
+        "default": { "clawd": "🦞" },
+        "description": "Emoji mappings for agents"
+      }
+    },
+    "required": ["channel", "targetId"]
+  },
+  "uiHints": {
+    "channel": { "label": "Channel", "placeholder": "discord, telegram, slack..." },
+    "targetId": { "label": "Target ID", "placeholder": "1234567890" },
+    "rateLimitMs": { "label": "Rate Limit (ms)" },
+    "batchWindowMs": { "label": "Batch Window (ms)" },
+    "maxBatchSize": { "label": "Max Batch Size" },
+    "agentEmojis": { "label": "Agent Emojis" }
+  }
+}
