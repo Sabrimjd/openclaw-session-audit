@@ -9,19 +9,15 @@ import { homedir } from "node:os";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, "..");
 
-const CONFIG_FILE = join(PROJECT_ROOT, "config.json");
 const SESSIONS_DIR = join(homedir(), ".openclaw", "agents", "main", "sessions");
 const STATE_DIR = join(PROJECT_ROOT, "state");
 const STATE_FILE = join(STATE_DIR, "state.json");
 const PID_FILE = join(STATE_DIR, "daemon.pid");
 const SESSIONS_JSON = join(SESSIONS_DIR, "sessions.json");
 
-type SendMethod = "webhook" | "fallback" | "auto";
-
 interface Config {
-  webhookUrl: string;
-  fallbackChannelId: string;
-  sendMethod: SendMethod;
+  channel: string;
+  targetId: string;
   rateLimitMs: number;
   batchWindowMs: number;
   maxBatchSize: number;
@@ -33,9 +29,8 @@ interface Config {
 
 function loadConfig(): Config {
   const defaults: Config = {
-    webhookUrl: "",
-    fallbackChannelId: "",
-    sendMethod: "auto",
+    channel: "",
+    targetId: "",
     rateLimitMs: 2000,
     batchWindowMs: 8000,
     maxBatchSize: 15,
@@ -45,34 +40,22 @@ function loadConfig(): Config {
     agentEmojis: { clawd: "🦞" }
   };
   
-  try {
-    if (existsSync(CONFIG_FILE)) {
-      const fileConfig = JSON.parse(readFileSync(CONFIG_FILE, "utf8"));
-      Object.assign(defaults, fileConfig);
-    }
-  } catch (err) {
-    console.error("[discord-audit-stream] Failed to load config.json:", err);
+  // Env vars from OpenClaw config (passed via index.ts)
+  if (process.env.SESSION_AUDIT_CHANNEL) {
+    defaults.channel = process.env.SESSION_AUDIT_CHANNEL;
   }
-  
-  // Env overrides
-  if (process.env.DISCORD_AUDIT_WEBHOOK_URL) {
-    defaults.webhookUrl = process.env.DISCORD_AUDIT_WEBHOOK_URL;
+  if (process.env.SESSION_AUDIT_TARGET_ID) {
+    defaults.targetId = process.env.SESSION_AUDIT_TARGET_ID;
   }
-  if (process.env.DISCORD_AUDIT_CHANNEL_ID) {
-    defaults.fallbackChannelId = process.env.DISCORD_AUDIT_CHANNEL_ID;
+  if (process.env.SESSION_AUDIT_RATE_LIMIT_MS) {
+    defaults.rateLimitMs = parseInt(process.env.SESSION_AUDIT_RATE_LIMIT_MS, 10);
   }
-  if (process.env.DISCORD_AUDIT_SEND_METHOD) {
-    defaults.sendMethod = process.env.DISCORD_AUDIT_SEND_METHOD as SendMethod;
+  if (process.env.SESSION_AUDIT_BATCH_WINDOW_MS) {
+    defaults.batchWindowMs = parseInt(process.env.SESSION_AUDIT_BATCH_WINDOW_MS, 10);
   }
-  if (process.env.DISCORD_AUDIT_RATE_LIMIT_MS) {
-    defaults.rateLimitMs = parseInt(process.env.DISCORD_AUDIT_RATE_LIMIT_MS, 10);
-  }
-  if (process.env.DISCORD_AUDIT_BATCH_WINDOW_MS) {
-    defaults.batchWindowMs = parseInt(process.env.DISCORD_AUDIT_BATCH_WINDOW_MS, 10);
-  }
-  if (process.env.DISCORD_AUDIT_AGENT_EMOJIS) {
+  if (process.env.SESSION_AUDIT_AGENT_EMOJIS) {
     try {
-      defaults.agentEmojis = JSON.parse(process.env.DISCORD_AUDIT_AGENT_EMOJIS);
+      defaults.agentEmojis = JSON.parse(process.env.SESSION_AUDIT_AGENT_EMOJIS);
     } catch {}
   }
   
@@ -223,7 +206,6 @@ const toolCallTimestamps: Map<string, { timestamp: number; sessionId: string }> 
 let batchTimer: ReturnType<typeof setTimeout> | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let isShuttingDown = false;
-let retryAfterMs = 0;
 let isFlushing = false;
 
 function loadState() {
@@ -238,7 +220,7 @@ function loadState() {
       seenIdsSet = new Set(state.seenIds);
     }
   } catch {
-    console.error("[discord-audit-stream] Failed to load state, starting fresh");
+    console.error("[session-audit] Failed to load state, starting fresh");
   }
 }
 
@@ -283,7 +265,7 @@ function loadSessionsJson() {
       }
     }
   } catch (err) {
-    console.error("[discord-audit-stream] Failed to load sessions.json:", err);
+    console.error("[session-audit] Failed to load sessions.json:", err);
   }
 }
 
@@ -295,7 +277,7 @@ function saveState() {
       if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true });
       writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
     } catch (err) {
-      console.error("[discord-audit-stream] Failed to save state:", err);
+      console.error("[session-audit] Failed to save state:", err);
     }
   }, 100);
 }
@@ -309,7 +291,6 @@ function writePidFile() {
 
 function canSend(): boolean {
   const now = Date.now();
-  if (now < retryAfterMs) return false;
   if (now - state.lastSend < RATE_LIMIT_MS) return false;
   state.lastSend = now;
   return true;
@@ -641,65 +622,24 @@ function formatEvent(event: PendingEvent): string {
   }
 }
 
-async function sendViaWebhook(text: string): Promise<boolean> {
-  if (!CONFIG.webhookUrl) {
-    console.error("[discord-audit-stream] No webhook URL configured");
-    return false;
+function sendMessage(text: string) {
+  if (!CONFIG.channel || !CONFIG.targetId) {
+    console.error("[session-audit] Missing channel or targetId");
+    return;
   }
-  try {
-    const res = await fetch(CONFIG.webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: text }),
-    });
-    
-    if (res.status === 429) {
-      const retryAfter = res.headers.get("Retry-After");
-      retryAfterMs = Date.now() + (parseInt(retryAfter || "5", 10) * 1000);
-      console.error("[discord-audit-stream] Rate limited, retry after:", retryAfter);
-      return false;
-    }
-    
-    return res.ok;
-  } catch (err) {
-    console.error("[discord-audit-stream] Webhook error:", err);
-    return false;
-  }
-}
-
-function sendViaFallback(text: string) {
+  const truncated = truncateText(text, MAX_MESSAGE_LENGTH);
   const child = spawn(OPENCLAW_BIN, [
     "message",
     "send",
     "--channel",
-    "discord",
+    CONFIG.channel,
     "--target",
-    `channel:${CONFIG.fallbackChannelId}`,
+    CONFIG.targetId,
     "--message",
-    text,
+    truncated,
     "--silent",
   ], { stdio: "ignore" });
   child.unref();
-}
-
-async function sendMessage(text: string) {
-  const truncated = truncateText(text, MAX_MESSAGE_LENGTH);
-  
-  switch (CONFIG.sendMethod) {
-    case "webhook":
-      await sendViaWebhook(truncated);
-      break;
-    case "fallback":
-      sendViaFallback(truncated);
-      break;
-    case "auto":
-    default:
-      const success = await sendViaWebhook(truncated);
-      if (!success) {
-        sendViaFallback(truncated);
-      }
-      break;
-  }
 }
 
 function buildMessage(groupKey: string, events: PendingEvent[]): string {
@@ -885,15 +825,60 @@ async function tailFile(filename: string): Promise<void> {
     return;
   }
   
-  // Skip history: for new files, start at end (don't backfill)
-  if (state.offsets[filename] === undefined) {
-    state.offsets[filename] = fileStat.size;
-  }
-  const offset = state.offsets[filename];
   const baseSessionId = getBaseSessionId(filename);
   const threadNumber = getThreadNumber(filename);
-  // Use base session ID as key for metadata lookup
   const sessionKey = baseSessionId;
+  const isNewFile = state.offsets[filename] === undefined;
+  
+  // For new files, first read metadata from beginning, then skip to end
+  if (isNewFile) {
+    try {
+      // Read first 5000 bytes to get session metadata
+      const firstStream = createReadStream(filepath, { start: 0, end: 5000, encoding: "utf8" });
+      const firstRl = createInterface({ input: firstStream });
+      for await (const line of firstRl) {
+        if (!line.trim()) continue;
+        try {
+          const row = JSON.parse(line);
+          const rowType = row?.type;
+          
+          // Parse session metadata
+          if (rowType === "session" && row?.cwd) {
+            const parts = row.cwd.split("/");
+            const projectName = parts[parts.length - 1] || sessionKey;
+            sessionMetadata.set(sessionKey, { 
+              cwd: row.cwd, 
+              projectName, 
+              model: "",
+              chatType: "unknown",
+              key: "",
+              contextTokens: undefined,
+              usedTokens: undefined,
+              provider: undefined,
+              surface: undefined,
+              updatedAt: undefined,
+              groupId: undefined,
+              thinkingLevel: undefined
+            });
+          }
+          
+          // Parse model-snapshot
+          if (rowType === "custom" && row?.customType === "model-snapshot" && row?.data?.modelId) {
+            const existing = sessionMetadata.get(sessionKey);
+            if (existing) {
+              sessionMetadata.set(sessionKey, { ...existing, model: row.data.modelId, provider: row.data.provider });
+            }
+          }
+          break; // Only process first line for metadata
+        } catch {}
+      }
+    } catch {}
+    
+    // Now skip to end for events (don't backfill history)
+    state.offsets[filename] = fileStat.size;
+  }
+  
+  const offset = state.offsets[filename];
   
   try {
     const stream = createReadStream(filepath, { start: offset, encoding: "utf8" });
@@ -1317,7 +1302,7 @@ const watcher = watch(SESSIONS_DIR, (event, filename) => {
 });
 
 watcher.on("error", (err) => {
-  console.error("[discord-audit-stream] Watcher error:", err);
+  console.error("[session-audit] Watcher error:", err);
 });
 
-console.log(`[discord-audit-stream] Daemon running, PID: ${process.pid}`);
+console.log(`[session-audit] Daemon running, PID: ${process.pid}`);

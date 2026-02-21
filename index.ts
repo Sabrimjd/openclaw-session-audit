@@ -9,9 +9,8 @@ const STATE_DIR = join(__dirname, "state");
 const PID_FILE = join(STATE_DIR, "daemon.pid");
 
 interface PluginConfig {
-  webhookUrl?: string;
-  fallbackChannelId?: string;
-  sendMethod?: "webhook" | "fallback" | "auto";
+  channel: string;
+  targetId: string;
   rateLimitMs?: number;
   batchWindowMs?: number;
   maxBatchSize?: number;
@@ -19,7 +18,7 @@ interface PluginConfig {
 }
 
 function getConfig(api: OpenClawPluginApi): PluginConfig {
-  const pluginConfig = api.config?.plugins?.entries?.["openclaw-discord-audit-stream"]?.config || {};
+  const pluginConfig = api.config?.plugins?.entries?.["openclaw-session-audit"]?.config || {};
   return pluginConfig as PluginConfig;
 }
 
@@ -45,7 +44,7 @@ function startDaemon(api: OpenClawPluginApi) {
     try {
       const pid = parseInt(readFileSync(PID_FILE, "utf8").trim(), 10);
       if (isProcessRunning(pid)) {
-        api.logger.info(`[discord-audit-stream] Daemon already running, PID: ${pid}`);
+        api.logger.info(`[session-audit] Daemon already running, PID: ${pid}`);
         return;
       }
       unlinkSync(PID_FILE);
@@ -53,14 +52,18 @@ function startDaemon(api: OpenClawPluginApi) {
   }
 
   const config = getConfig(api);
-  const env: Record<string, string> = { ...process.env };
   
-  if (config.webhookUrl) env.DISCORD_AUDIT_WEBHOOK_URL = config.webhookUrl;
-  if (config.fallbackChannelId) env.DISCORD_AUDIT_CHANNEL_ID = config.fallbackChannelId;
-  if (config.sendMethod) env.DISCORD_AUDIT_SEND_METHOD = config.sendMethod;
-  if (config.rateLimitMs) env.DISCORD_AUDIT_RATE_LIMIT_MS = String(config.rateLimitMs);
-  if (config.batchWindowMs) env.DISCORD_AUDIT_BATCH_WINDOW_MS = String(config.batchWindowMs);
-  if (config.agentEmojis) env.DISCORD_AUDIT_AGENT_EMOJIS = JSON.stringify(config.agentEmojis);
+  if (!config.channel || !config.targetId) {
+    api.logger.warn(`[session-audit] Missing required config: channel and targetId`);
+    return;
+  }
+
+  const env: Record<string, string> = { ...process.env };
+  env.SESSION_AUDIT_CHANNEL = config.channel;
+  env.SESSION_AUDIT_TARGET_ID = config.targetId;
+  if (config.rateLimitMs) env.SESSION_AUDIT_RATE_LIMIT_MS = String(config.rateLimitMs);
+  if (config.batchWindowMs) env.SESSION_AUDIT_BATCH_WINDOW_MS = String(config.batchWindowMs);
+  if (config.agentEmojis) env.SESSION_AUDIT_AGENT_EMOJIS = JSON.stringify(config.agentEmojis);
 
   const child = spawn("node", [join(__dirname, "src", "daemon.ts")], {
     detached: true,
@@ -70,7 +73,7 @@ function startDaemon(api: OpenClawPluginApi) {
   });
 
   child.unref();
-  api.logger.info(`[discord-audit-stream] Started daemon, PID: ${child.pid}`);
+  api.logger.info(`[session-audit] Started daemon, PID: ${child.pid}`);
 }
 
 function stopDaemon(logger: OpenClawPluginApi["logger"]) {
@@ -79,7 +82,7 @@ function stopDaemon(logger: OpenClawPluginApi["logger"]) {
       const pid = parseInt(readFileSync(PID_FILE, "utf8").trim(), 10);
       if (isProcessRunning(pid)) {
         process.kill(pid, "SIGTERM");
-        logger.info(`[discord-audit-stream] Stopped daemon, PID: ${pid}`);
+        logger.info(`[session-audit] Stopped daemon, PID: ${pid}`);
       }
       unlinkSync(PID_FILE);
     } catch {}
@@ -90,19 +93,13 @@ const configSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
-    webhookUrl: {
+    channel: {
       type: "string",
-      description: "Discord webhook URL"
+      description: "OpenClaw channel name (discord, telegram, slack, etc.)"
     },
-    fallbackChannelId: {
+    targetId: {
       type: "string",
-      description: "Fallback Discord channel ID"
-    },
-    sendMethod: {
-      type: "string",
-      enum: ["webhook", "fallback", "auto"],
-      default: "auto",
-      description: "Method to send messages: webhook, fallback (openclaw CLI), or auto"
+      description: "Target ID (channel, group, or user ID)"
     },
     rateLimitMs: {
       type: "number",
@@ -125,13 +122,12 @@ const configSchema = {
       description: "Emoji mappings for agents"
     }
   },
-  required: []
+  required: ["channel", "targetId"]
 };
 
 const uiHints = {
-  webhookUrl: { label: "Discord Webhook URL", sensitive: true, placeholder: "https://discord.com/api/webhooks/..." },
-  fallbackChannelId: { label: "Fallback Channel ID", placeholder: "1234567890" },
-  sendMethod: { label: "Send Method" },
+  channel: { label: "Channel", placeholder: "discord, telegram, slack..." },
+  targetId: { label: "Target ID", placeholder: "1234567890" },
   rateLimitMs: { label: "Rate Limit (ms)" },
   batchWindowMs: { label: "Batch Window (ms)" },
   maxBatchSize: { label: "Max Batch Size" },
@@ -139,14 +135,14 @@ const uiHints = {
 };
 
 const plugin = {
-  id: "openclaw-discord-audit-stream",
-  name: "Discord Audit Stream",
-  description: "Monitors OpenClaw session files and sends all events to a Discord channel",
+  id: "openclaw-session-audit",
+  name: "Session Audit",
+  description: "Monitors OpenClaw sessions and streams events to any channel",
   configSchema,
   uiHints,
   register(api: OpenClawPluginApi) {
     api.registerService({
-      id: "openclaw-discord-audit-stream-daemon",
+      id: "openclaw-session-audit-daemon",
       start: () => startDaemon(api),
       stop: () => stopDaemon(api.logger),
     });

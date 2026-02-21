@@ -1,7 +1,7 @@
 {
-  "name": "openclaw-discord-audit-stream",
-  "version": "2.0.6",
-  "description": "Monitors OpenClaw session files and sends all events to a Discord channel via webhook",
+  "name": "openclaw-session-audit",
+  "version": "1.0.3",
+  "description": "Monitors OpenClaw sessions and streams events to any channel (Discord, Telegram, Slack, etc.)",
   "main": "index.ts",
   "types": "index.ts",
   "openclaw": {
@@ -9,10 +9,13 @@
   },
   "keywords": [
     "openclaw",
-    "discord",
     "audit",
-    "logging",
+    "session",
     "monitoring",
+    "logging",
+    "discord",
+    "telegram",
+    "slack",
     "ai-agent",
     "openclaw-plugin"
   ],
@@ -20,12 +23,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Sabrimjd/discord-audit-stream.git"
+    "url": "git+https://github.com/Sabrimjd/openclaw-session-audit.git"
   },
   "bugs": {
-    "url": "https://github.com/Sabrimjd/discord-audit-stream/issues"
+    "url": "https://github.com/Sabrimjd/openclaw-session-audit/issues"
   },
-  "homepage": "https://github.com/Sabrimjd/discord-audit-stream#readme",
+  "homepage": "https://github.com/Sabrimjd/openclaw-session-audit#readme",
   "engines": {
     "node": ">=18.0.0"
   },

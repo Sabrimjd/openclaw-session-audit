@@ -1,20 +1,20 @@
 {
-  "id": "openclaw-discord-audit-stream",
-  "name": "Discord Audit Stream",
-  "version": "2.0.6",
-  "description": "Monitors OpenClaw session files and sends all events to a Discord channel via webhook",
+  "id": "openclaw-session-audit",
+  "name": "Session Audit",
+  "version": "1.0.3",
+  "description": "Monitors OpenClaw sessions and streams events to any channel (Discord, Telegram, Slack, etc.)",
   "main": "index.ts",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "webhookUrl": {
+      "channel": {
         "type": "string",
-        "description": "Discord webhook URL"
+        "description": "OpenClaw channel name (discord, telegram, slack, etc.)"
       },
-      "fallbackChannelId": {
+      "targetId": {
         "type": "string",
-        "description": "Fallback Discord channel ID"
+        "description": "Target ID (channel, group, or user ID)"
       },
       "rateLimitMs": {
         "type": "number",
@@ -31,32 +31,22 @@
         "default": 15,
         "description": "Maximum batch size"
       },
-      "sendMethod": {
-        "type": "string",
-        "enum": ["webhook", "fallback", "auto"],
-        "default": "auto",
-        "description": "Method to send messages: webhook, fallback (openclaw CLI), or auto"
-      },
       "agentEmojis": {
         "type": "object",
         "default": { "clawd": "🦞" },
         "description": "Emoji mappings for agents"
       }
     },
-    "required": []
+    "required": ["channel", "targetId"]
   },
   "uiHints": {
-    "webhookUrl": {
-      "label": "Discord Webhook URL",
-      "sensitive": true,
-      "placeholder": "https://discord.com/api/webhooks/..."
+    "channel": {
+      "label": "Channel",
+      "placeholder": "discord, telegram, slack..."
     },
-    "fallbackChannelId": {
-      "label": "Fallback Channel ID",
+    "targetId": {
+      "label": "Target ID",
       "placeholder": "1234567890"
-    },
-    "sendMethod": {
-      "label": "Send Method"
     },
     "rateLimitMs": {
       "label": "Rate Limit (ms)"
