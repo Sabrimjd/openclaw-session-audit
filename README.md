@@ -16,33 +16,58 @@ openclaw plugins install openclaw-discord-audit-stream
 
 ## Configuration
 
-### Step 1: Create Discord Webhook
+Configure in your OpenClaw config (`~/.openclaw/openclaw.json`):
 
-1. Go to your Discord server settings
-2. Navigate to **Integrations** → **Webhooks**
-3. Click **New Webhook**
-4. Name it (e.g., "OpenClaw Audit")
-5. Select the channel where you want audit logs
-6. Click **Copy Webhook URL**
+### Option A: Fallback Mode (uses OpenClaw's Discord bot)
 
-### Step 2: Get Channel ID
+No webhook setup needed - uses your existing OpenClaw Discord integration:
 
-1. Enable **Developer Mode** in Discord (User Settings → Advanced → Developer Mode)
-2. Right-click the channel → **Copy ID**
-
-### Step 3: Configure Plugin
-
-Add to your OpenClaw config (`~/.openclaw/config.json5`):
-
-```json5
+```json
 {
-  plugins: {
-    entries: {
+  "plugins": {
+    "entries": {
       "openclaw-discord-audit-stream": {
-        enabled: true,
-        config: {
-          webhookUrl: "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN",
-          fallbackChannelId: "YOUR_CHANNEL_ID"
+        "enabled": true,
+        "config": {
+          "sendMethod": "fallback",
+          "fallbackChannelId": "YOUR_DISCORD_CHANNEL_ID"
+        }
+      }
+    }
+  }
+}
+```
+
+### Option B: Webhook Mode (faster, recommended)
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "openclaw-discord-audit-stream": {
+        "enabled": true,
+        "config": {
+          "sendMethod": "webhook",
+          "webhookUrl": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+        }
+      }
+    }
+  }
+}
+```
+
+### Option C: Auto Mode (tries webhook, falls back to CLI)
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "openclaw-discord-audit-stream": {
+        "enabled": true,
+        "config": {
+          "sendMethod": "auto",
+          "webhookUrl": "https://discord.com/api/webhooks/...",
+          "fallbackChannelId": "YOUR_CHANNEL_ID"
         }
       }
     }
@@ -54,82 +79,36 @@ Add to your OpenClaw config (`~/.openclaw/config.json5`):
 
 | Option | Required | Description | Default |
 |--------|----------|-------------|---------|
-| `webhookUrl` | ⚠️ See below | Discord webhook URL | - |
-| `fallbackChannelId` | ⚠️ See below | Channel ID for openclaw CLI fallback | - |
+| `webhookUrl` | No* | Discord webhook URL | - |
+| `fallbackChannelId` | No* | Channel ID for openclaw CLI fallback | - |
 | `sendMethod` | No | `"webhook"`, `"fallback"`, or `"auto"` | `"auto"` |
 | `rateLimitMs` | No | Rate limit between messages (ms) | 2000 |
 | `batchWindowMs` | No | Batch window for grouping events (ms) | 8000 |
 | `maxBatchSize` | No | Max events per batch | 15 |
 | `agentEmojis` | No | Emoji mappings for agents | `{ clawd: "🦞" }` |
 
-## Send Methods: Webhook vs Fallback
+*Either `webhookUrl` or `fallbackChannelId` must be provided depending on `sendMethod`.
 
-The daemon supports two ways to send messages to Discord:
+## Send Methods
 
 ### Webhook (Recommended)
-
-```json5
-{
-  sendMethod: "webhook",  // or "auto"
-  webhookUrl: "https://discord.com/api/webhooks/..."
-}
-```
-
-**Pros:**
 - ✅ Faster - direct HTTP POST
 - ✅ More reliable - no external dependency
 - ✅ Works without openclaw CLI installed
-- ✅ Better error handling
 - ✅ Lower resource usage
 
-**Cons:**
-- ❌ Requires creating a webhook in Discord
-- ❌ Limited to one channel per webhook
-
 ### Fallback (OpenClaw CLI)
-
-```json5
-{
-  sendMethod: "fallback",
-  fallbackChannelId: "123456789"
-}
-```
-
-**Pros:**
 - ✅ No webhook setup needed
 - ✅ Can send to any channel you have access to
-- ✅ Uses existing openclaw authentication
-
-**Cons:**
 - ❌ Slower - spawns a subprocess
-- ❌ Requires openclaw CLI installed and authenticated
 - ❌ Higher resource usage
-- ❌ Less reliable (process spawn overhead)
 
 ### Auto Mode (Default)
+Tries webhook first, falls back to openclaw CLI if webhook fails.
 
-```json5
-{
-  sendMethod: "auto",
-  webhookUrl: "https://discord.com/api/webhooks/...",
-  fallbackChannelId: "123456789"
-}
-```
+## Agent Skill
 
-Tries webhook first, falls back to openclaw CLI if webhook fails. Best of both worlds for reliability.
-
-### Environment Variables (Alternative)
-
-You can also use environment variables instead of config:
-
-```bash
-export DISCORD_AUDIT_WEBHOOK_URL="https://discord.com/api/webhooks/..."
-export DISCORD_AUDIT_CHANNEL_ID="123456789"
-export DISCORD_AUDIT_RATE_LIMIT_MS="2000"
-export DISCORD_AUDIT_BATCH_WINDOW_MS="8000"
-```
-
-**Priority**: Environment variables > config.json > defaults
+Share `skills/discord-audit-stream/SKILL.md` with your AI agent for automated installation and configuration.
 
 ## Features
 
@@ -155,69 +134,6 @@ export DISCORD_AUDIT_BATCH_WINDOW_MS="8000"
 - Handles large files (up to 10MB)
 - State persistence across restarts
 
-## Management
-
-### Auto-start
-The daemon starts automatically when OpenClaw gateway starts.
-
-### Manual Control
-
-```bash
-# Start
-node ~/.openclaw/extensions/openclaw-discord-audit-stream/src/daemon.ts &
-
-# Stop
-kill $(cat ~/.openclaw/extensions/openclaw-discord-audit-stream/state/daemon.pid)
-
-# Restart
-kill $(cat ~/.openclaw/extensions/openclaw-discord-audit-stream/state/daemon.pid) 2>/dev/null
-sleep 1
-node ~/.openclaw/extensions/openclaw-discord-audit-stream/src/daemon.ts &
-```
-
-## Customization
-
-### Agent Emojis
-
-Add custom emojis for your agents:
-
-```json5
-{
-  agentEmojis: {
-    "clawd": "🦞",
-    "worker": "🔨",
-    "planner": "📋",
-    "myagent": "🐉"
-  }
-}
-```
-
-### Event Filtering
-
-To filter specific events, edit `src/daemon.ts`:
-
-```typescript
-// Only track destructive tools
-if (!["exec", "edit", "write"].includes(name)) continue;
-
-// Only track user messages and completions
-if (!["user_message", "assistant_complete"].includes(event.type)) continue;
-```
-
-## Troubleshooting
-
-### No messages appearing
-1. Verify webhook URL in config
-2. Check daemon is running: `cat state/daemon.pid`
-3. Check process: `ps aux | grep daemon.ts`
-
-### Rate limited
-- Increase `rateLimitMs` (default: 2000ms)
-- Discord limit: 5 requests per 2 seconds
-
-### Session file too large
-- Increase `maxFileSize` in config (default: 10MB)
-
 ## Event Icons
 
 | Icon | Event | Icon | Event |
@@ -230,24 +146,34 @@ if (!["user_message", "assistant_complete"].includes(event.type)) continue;
 | 🔄 | Model change | 🗜️ | Context compaction |
 | 🖼️ | Image | 🧠 | Thinking level |
 
+## Troubleshooting
+
+### No messages appearing
+1. Verify config in `~/.openclaw/openclaw.json`
+2. Restart gateway: `openclaw gateway restart`
+3. Check daemon: `ps aux | grep daemon.ts`
+4. Check logs: `journalctl --user -u openclaw-gateway.service -f`
+
+### Rate limited
+- Increase `rateLimitMs` (default: 2000ms)
+- Discord limit: 5 requests per 2 seconds
+
+### Uninstall
+```bash
+openclaw plugins uninstall openclaw-discord-audit-stream
+```
+
 ## How It Works
 
 1. **Watch** - Monitors OpenClaw session files via `fs.watch`
 2. **Parse** - Reads new JSON lines from offset
 3. **Track** - Records events with timestamps
 4. **Batch** - Groups events within time window
-5. **Send** - POSTs to Discord webhook
+5. **Send** - POSTs to Discord webhook or via OpenClaw CLI
 
 ## License
 
 MIT License - See [LICENSE](LICENSE)
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
 
 ## Support
 

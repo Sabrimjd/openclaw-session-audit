@@ -70,6 +70,11 @@ function loadConfig(): Config {
   if (process.env.DISCORD_AUDIT_BATCH_WINDOW_MS) {
     defaults.batchWindowMs = parseInt(process.env.DISCORD_AUDIT_BATCH_WINDOW_MS, 10);
   }
+  if (process.env.DISCORD_AUDIT_AGENT_EMOJIS) {
+    try {
+      defaults.agentEmojis = JSON.parse(process.env.DISCORD_AUDIT_AGENT_EMOJIS);
+    } catch {}
+  }
   
   return defaults;
 }
