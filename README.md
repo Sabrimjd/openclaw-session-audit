@@ -89,6 +89,55 @@ No webhook setup needed - uses your existing OpenClaw Discord integration:
 
 *Either `webhookUrl` or `fallbackChannelId` must be provided depending on `sendMethod`.
 
+## Message Format
+
+Each audit message contains a **header** with session metadata followed by **events**:
+
+```
+🤖[sab] (qwen3-coder-plus) 👥agent:main:discord:channel:1474542... | 📁/home/sab | 📊22k/262k (8%) | 🧠off | 🖥️discord | 🔌discord | ⏰13:22 | 🔗14745425
+13:49:41.24 💬 Loky:
+I created this how can i advertise it to share it to the open source community ?
+13:49:51.37 ✅ Response completed (22,365 tokens): " To advertise your OpenClaw project..."
+```
+
+### Header Fields
+
+| Field | Example | Description |
+|-------|---------|-------------|
+| `🤖[name]` | `🤖[sab]` | Agent/workspace name with emoji |
+| `(model)` | `(qwen3-coder-plus)` | Current model in use |
+| `👥/👤` | `👥agent:main:discord:...` | Chat type (group/direct) + session key |
+| `[subagent]` | `[subagent]` | Tag if this is a subagent session |
+| `[thread:N]` | `[thread:567]` | Thread number if in a thread |
+| `📁` | `📁/home/sab` | Working directory |
+| `📊` | `📊22k/262k (8%)` | Token usage (used/context window %) |
+| `🧠` | `🧠off` | Thinking level (off/low/medium/high) |
+| `🖥️` | `🖥️discord` | Surface (discord, telegram, cli, etc.) |
+| `🔌` | `🔌discord` | Provider/channel type |
+| `⏰` | `⏰13:22` | Session start time |
+| `🔗` | `🔗14745425` | Group/channel ID (shortened) |
+
+### Event Format
+
+Each event is formatted as:
+```
+HH:mm:ss.ms ICON Event details
+```
+
+## Event Icons
+
+| Icon | Event | Icon | Event |
+|------|-------|------|-------|
+| ⚡ | exec | ✏️ | edit |
+| 📝 | write | 📖 | read |
+| 🔍 | grep/glob | 🌐 | webfetch |
+| 💬 | User message | ✅ | Response completed |
+| 💭 | Thinking | ❌ | Error |
+| 🔄 | Model change | 🗜️ | Context compaction |
+| 🖼️ | Image | 🧠 | Thinking level |
+| 🚀 | sessions_spawn | 📋 | sessions_list |
+| 📤 | delegate_task | 💻 | bash/process |
+
 ## Send Methods
 
 ### Webhook (Recommended)
@@ -133,18 +182,7 @@ Share `skills/discord-audit-stream/SKILL.md` with your AI agent for automated in
 - Rate limiting (respects Discord limits)
 - Handles large files (up to 10MB)
 - State persistence across restarts
-
-## Event Icons
-
-| Icon | Event | Icon | Event |
-|------|-------|------|-------|
-| ⚡ | exec | ✏️ | edit |
-| 📝 | write | 📖 | read |
-| 🔍 | grep/glob | 🌐 | webfetch |
-| 💬 | User message | ✅ | Response completed |
-| 💭 | Thinking | ❌ | Error |
-| 🔄 | Model change | 🗜️ | Context compaction |
-| 🖼️ | Image | 🧠 | Thinking level |
+- **Skip history** - New sessions start at current position (no backfill)
 
 ## Troubleshooting
 
@@ -166,7 +204,7 @@ openclaw plugins uninstall openclaw-discord-audit-stream
 ## How It Works
 
 1. **Watch** - Monitors OpenClaw session files via `fs.watch`
-2. **Parse** - Reads new JSON lines from offset
+2. **Parse** - Reads new JSON lines from current position
 3. **Track** - Records events with timestamps
 4. **Batch** - Groups events within time window
 5. **Send** - POSTs to Discord webhook or via OpenClaw CLI
