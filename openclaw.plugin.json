@@ -1,7 +1,7 @@
 {
   "id": "discord-audit-stream",
   "name": "Discord Audit Stream",
-  "version": "1.0.0",
+  "version": "2.0.2",
   "description": "Monitors OpenClaw session files and sends all events to a Discord channel via webhook",
   "main": "index.ts",
   "configSchema": {
@@ -31,13 +31,19 @@
         "default": 15,
         "description": "Maximum batch size"
       },
+      "sendMethod": {
+        "type": "string",
+        "enum": ["webhook", "fallback", "auto"],
+        "default": "auto",
+        "description": "Method to send messages: webhook, fallback (openclaw CLI), or auto"
+      },
       "agentEmojis": {
         "type": "object",
         "default": { "clawd": "🦞" },
         "description": "Emoji mappings for agents"
       }
     },
-    "required": ["webhookUrl"]
+    "required": []
   },
   "uiHints": {
     "webhookUrl": {
@@ -48,6 +54,9 @@
     "fallbackChannelId": {
       "label": "Fallback Channel ID",
       "placeholder": "1234567890"
+    },
+    "sendMethod": {
+      "label": "Send Method"
     },
     "rateLimitMs": {
       "label": "Rate Limit (ms)"
