@@ -3,6 +3,9 @@ state/
 *.pid
 *.backup
 
+# Config with secrets
+config.json
+
 # Environment files with secrets
 .env
 .env.local

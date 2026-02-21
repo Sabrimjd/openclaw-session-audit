@@ -4,12 +4,14 @@ import { join, dirname, extname } from "node:path";
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = join(__dirname, "..");
 
-const CONFIG_FILE = join(__dirname, "config.json");
-const SESSIONS_DIR = join(process.env.HOME || "/home/sab", ".openclaw", "agents", "main", "sessions");
-const STATE_DIR = join(__dirname, "state");
+const CONFIG_FILE = join(PROJECT_ROOT, "config.json");
+const SESSIONS_DIR = join(homedir(), ".openclaw", "agents", "main", "sessions");
+const STATE_DIR = join(PROJECT_ROOT, "state");
 const STATE_FILE = join(STATE_DIR, "state.json");
 const PID_FILE = join(STATE_DIR, "daemon.pid");
 const SESSIONS_JSON = join(SESSIONS_DIR, "sessions.json");
@@ -560,10 +562,13 @@ function formatEvent(event: PendingEvent): string {
     case "assistant_complete": {
       const icon = getEventIcon("assistant_complete");
       const tokens = data.tokens as number | undefined;
-      const stopReason = String(data.stopReason || "stop");
+      const messagePreview = data.messagePreview as string | undefined;
       let msg = `${time} ${icon} Response completed`;
       if (tokens) {
         msg += ` (${tokens.toLocaleString()} tokens)`;
+      }
+      if (messagePreview) {
+        msg += `: "${truncateText(messagePreview, 100)}"`;
       }
       return msg;
     }
@@ -571,7 +576,7 @@ function formatEvent(event: PendingEvent): string {
     case "thinking": {
       const icon = getEventIcon("thinking");
       const preview = String(data.preview || "");
-      return `${time} ${icon} Thinking: "${truncateText(preview, 80)}"`;
+      return `${time} ${icon} Thinking: "${truncateText(preview, 100)}"`;
     }
     
     case "prompt_error": {
@@ -1139,6 +1144,13 @@ async function tailFile(filename: string): Promise<void> {
           if (row?.message?.stopReason === "stop") {
             const id = `complete:${row.id || Date.now()}`;
             if (!isSeen(id)) {
+              // Extract text content for preview
+              let messagePreview = "";
+              if (Array.isArray(message.content)) {
+                const textItem = message.content.find((c: { type?: string }) => c.type === "text");
+                messagePreview = textItem?.text || "";
+              }
+              
               addEvent(sessionKey, threadNumber, {
                 type: "assistant_complete",
                 id,
@@ -1146,7 +1158,8 @@ async function tailFile(filename: string): Promise<void> {
                 timestamp: parseTimestamp(row.timestamp),
                 data: {
                   tokens: row.message.usage?.totalTokens,
-                  stopReason: row.message.stopReason
+                  stopReason: row.message.stopReason,
+                  messagePreview
                 }
               });
               hasNewEvents = true;
