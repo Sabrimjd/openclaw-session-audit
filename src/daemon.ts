@@ -832,47 +832,51 @@ async function tailFile(filename: string): Promise<void> {
   
   // For new files, first read metadata from beginning, then skip to end
   if (isNewFile) {
-    try {
-      // Read first 5000 bytes to get session metadata
-      const firstStream = createReadStream(filepath, { start: 0, end: 5000, encoding: "utf8" });
-      const firstRl = createInterface({ input: firstStream });
-      for await (const line of firstRl) {
-        if (!line.trim()) continue;
-        try {
-          const row = JSON.parse(line);
-          const rowType = row?.type;
-          
-          // Parse session metadata
-          if (rowType === "session" && row?.cwd) {
-            const parts = row.cwd.split("/");
-            const projectName = parts[parts.length - 1] || sessionKey;
-            sessionMetadata.set(sessionKey, { 
-              cwd: row.cwd, 
-              projectName, 
-              model: "",
-              chatType: "unknown",
-              key: "",
-              contextTokens: undefined,
-              usedTokens: undefined,
-              provider: undefined,
-              surface: undefined,
-              updatedAt: undefined,
-              groupId: undefined,
-              thinkingLevel: undefined
-            });
-          }
-          
-          // Parse model-snapshot
-          if (rowType === "custom" && row?.customType === "model-snapshot" && row?.data?.modelId) {
-            const existing = sessionMetadata.get(sessionKey);
-            if (existing) {
-              sessionMetadata.set(sessionKey, { ...existing, model: row.data.modelId, provider: row.data.provider });
+    // Only read first line if we don't have metadata from loadSessionsJson/scanAllFiles
+    const existingMeta = sessionMetadata.get(sessionKey);
+    if (!existingMeta || !existingMeta.cwd) {
+      try {
+        const firstStream = createReadStream(filepath, { start: 0, end: 5000, encoding: "utf8" });
+        const firstRl = createInterface({ input: firstStream });
+        for await (const line of firstRl) {
+          if (!line.trim()) continue;
+          try {
+            const row = JSON.parse(line);
+            const rowType = row?.type;
+            
+            // Parse session metadata
+            if (rowType === "session" && row?.cwd) {
+              const parts = row.cwd.split("/");
+              const projectName = parts[parts.length - 1] || sessionKey;
+              const existing = sessionMetadata.get(sessionKey);
+              sessionMetadata.set(sessionKey, { 
+                cwd: row.cwd, 
+                projectName, 
+                model: existing?.model || "",
+                chatType: existing?.chatType || "unknown",
+                key: existing?.key || "",
+                contextTokens: existing?.contextTokens,
+                usedTokens: existing?.usedTokens,
+                provider: existing?.provider,
+                surface: existing?.surface,
+                updatedAt: existing?.updatedAt,
+                groupId: existing?.groupId,
+                thinkingLevel: existing?.thinkingLevel
+              });
             }
-          }
-          break; // Only process first line for metadata
-        } catch {}
-      }
-    } catch {}
+            
+            // Parse model-snapshot
+            if (rowType === "custom" && row?.customType === "model-snapshot" && row?.data?.modelId) {
+              const existing = sessionMetadata.get(sessionKey);
+              if (existing) {
+                sessionMetadata.set(sessionKey, { ...existing, model: row.data.modelId, provider: row.data.provider || existing.provider });
+              }
+            }
+            break; // Only process first line for metadata
+          } catch {}
+        }
+      } catch {}
+    }
     
     // Now skip to end for events (don't backfill history)
     state.offsets[filename] = fileStat.size;
