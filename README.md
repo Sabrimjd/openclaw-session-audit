@@ -8,7 +8,7 @@
 
 Monitor all OpenClaw session events and stream them to any channel (Discord, Telegram, Slack, etc.) in real-time.
 
-<img src="pic/screenshot2.png" alt="Logo" width="600">
+<img src="pic/screenshot2.png" alt="Logo" width="1200">
 
 
 ## Installation
