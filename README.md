@@ -8,8 +8,31 @@
 
 Monitor all OpenClaw session events and stream them to any channel (Discord, Telegram, Slack, etc.) in real-time.
 
-<img src="pic/screenshot2.png" alt="Logo" width="1200">
+```
+🦞[clawd] (glm-5) 👥agent:main:discord:channel:123456789012345678 | 📁/home/user/clawd | 📊85k/200k (42%) | 🧠low | 🖥️discord | ⏰14:32 | 🔗session-abc123
+14:32:15.214 💭 Thinking: "User wants to deploy the new feature. Let me check the current git status and run tests first."
+14:32:15.214 ⚡ exec(1.2s): git status --short && npm test
+14:32:18.447 💭 Thinking: "Tests passed. Now checking if there are any open PRs on this repo."
+14:32:18.447 🔧 cron(89ms): list
+14:32:20.123 📖 read(45ms): /home/user/clawd/AGENTS.md
+14:32:22.891 ✏️ edit(112ms) (+8/-2 lines, +234/-89 chars): /home/user/clawd/MEMORY.md
+14:32:25.556 🌐 web_search(1.1s): openai gpt-5 release date 2026
+14:32:27.012 🌐 web_fetch(892ms): https://docs.openclaw.ai/channels/discord
+14:32:30.334 🔎 memory_search(234ms): "docker compose" → 3 results from MEMORY.md#45-52
+14:32:32.101 ⚙️ process(67ms): poll (background-task-xyz)
+14:32:35.789 🚀 spawn(189ms): [zai/glm-4.7-flash]
+🤖[workspace-subagent-test] (glm-4.7-flash)[subagent] [thread:1475062917547167754] agent:subagent-test:subagent:101d4e37-9b9b-4dc2-bb77-c7b85e8c7e6f | 📁/home/sab/.openclaw/workspace-subagent-test | 🧠low | 🖥️subagent | ⏰12:23 | 🔗101d4e37
+14:32:40.222 🔊 tts(456ms): "Build completed successfully!"
+14:32:42.015 📊 session_status(78ms)
+14:32:45.890 📨 message(234ms): discord → channel:123456789012345678
+14:32:48.123 ✅ Tool call succeeded: deploy.sh completed in 12.3s
+14:32:50.456 ⏰ cron(156ms): run [daily-backup] → completed
+14:32:52.789 🖼️ image(1.8s): analyze /tmp/screenshot.png
+```
 
+## Agent Skill
+
+Share `skills/openclaw-session-audit/SKILL.md` with your AI agent for automated installation and configuration.
 
 ## Installation
 
@@ -106,13 +129,6 @@ Configure in your OpenClaw config (`~/.openclaw/openclaw.json`):
 
 Each audit message contains a **header** with session metadata followed by **events**:
 
-```
-🤖[sab] (qwen3-coder-plus) 👥agent:main:discord:channel:1474542... | 📁/home/sab | 📊22k/262k (8%) | 🧠off | 🖥️discord | 🔌discord | ⏰13:22 | 🔗14745425
-13:49:41.24 💬 Loky:
-I created this how can i advertise it to share it to the open source community ?
-13:49:51.37 ✅ Response completed (22,365 tokens): " To advertise your OpenClaw project..."
-```
-
 ### Header Fields
 
 | Field | Example | Description |
@@ -149,9 +165,6 @@ HH:mm:ss.ms ICON Event details
 | 🔄 | Model change | 🗜️ | Context compaction |
 | 🖼️ | Image | 🧠 | Thinking level |
 
-## Agent Skill
-
-Share `skills/openclaw-session-audit/SKILL.md` with your AI agent for automated installation and configuration.
 
 ## Features
 
