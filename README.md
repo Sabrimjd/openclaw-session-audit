@@ -1,6 +1,8 @@
-# OpenClaw Session Audit
-
-<img src="pic/logo.png" alt="Logo" width="200">
+<div align="center">
+  <img src="pic/logo.png" width="200px" alt="Openclaw session audit" />
+  <h1 style="font-size: 28px; margin: 10px 0;">OpenClaw Session Audit</h1>
+  <p>X-Ray Openclaw agents</p>
+</div>
 
 [![npm version](https://badge.fury.io/js/openclaw-session-audit.svg)](https://badge.fury.io/js/openclaw-session-audit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
