@@ -3,16 +3,18 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { SESSIONS_JSON, CONFIG } from "./config.js";
+import { join } from "node:path";
+import { AGENTS_DIR, CONFIG } from "./config.js";
 import { formatTimeOnly } from "./format.js";
 import type { SessionMetadata, ProjectInfo } from "./types.js";
 
 export const sessionMetadata = new Map<string, SessionMetadata>();
 
-export function loadSessionsJson(): void {
+export function loadSessionsJson(agentName: string): void {
+  const sessionsJsonPath = join(AGENTS_DIR, agentName, "sessions", "sessions.json");
   try {
-    if (!existsSync(SESSIONS_JSON)) return;
-    const data = JSON.parse(readFileSync(SESSIONS_JSON, "utf8"));
+    if (!existsSync(sessionsJsonPath)) return;
+    const data = JSON.parse(readFileSync(sessionsJsonPath, "utf8"));
 
     for (const [key, value] of Object.entries(data)) {
       if (!value || typeof value !== "object") continue;
@@ -29,11 +31,26 @@ export function loadSessionsJson(): void {
         let surface = "";
         let chatType = "unknown";
         let groupId = "";
+        let keyAgentName = agentName; // Default to directory agent name
 
-        if (parts.length >= 4) {
+        if (parts.length >= 5) {
+          // Standard format: agent:<agent>:<surface>:<chatType>:<groupId>
+          keyAgentName = parts[1] || agentName;
           surface = parts[2] || "";
           chatType = parts[3] || "unknown";
           groupId = parts[4] || "";
+        } else if (parts.length === 4 && parts[2] === "subagent") {
+          // Subagent format: agent:<agent>:subagent:<groupId>
+          keyAgentName = parts[1] || agentName;
+          surface = "subagent";
+          chatType = "subagent";
+          groupId = parts[3] || "";
+        } else if (parts.length === 4) {
+          // Other 4-part format: agent:<agent>:<surface>:<chatType>
+          keyAgentName = parts[1] || agentName;
+          surface = parts[2] || "";
+          chatType = parts[3] || "unknown";
+          groupId = "";
         } else if (parts.length === 3) {
           surface = parts[2] || "";
           chatType = "direct";
@@ -47,6 +64,7 @@ export function loadSessionsJson(): void {
           // Update existing entry
           existing.chatType = chatType;
           existing.key = key;
+          existing.agentName = keyAgentName;
           existing.surface = surface;
           existing.updatedAt = formattedUpdatedAt;
           existing.groupId = groupId;
@@ -58,6 +76,7 @@ export function loadSessionsJson(): void {
             model: "",
             chatType,
             key,
+            agentName: keyAgentName,
             contextTokens: contextTokens,
             provider: undefined,
             surface,
@@ -68,9 +87,9 @@ export function loadSessionsJson(): void {
         }
       }
     }
-    console.error("[session-audit] Loaded", sessionMetadata.size, "sessions from sessions.json");
+    console.error(`[session-audit] Loaded sessions from ${agentName}/sessions.json`);
   } catch (err) {
-    console.error("[session-audit] Failed to load sessions.json:", err);
+    console.error(`[session-audit] Failed to load ${agentName}/sessions.json:`, err);
   }
 }
 
@@ -97,6 +116,7 @@ export function getProjectInfo(sessionId: string): ProjectInfo {
       shortId,
       keyDisplay: shortId,
       isSubagent: false,
+      agentName: "",
       cwd: "",
       contextTokens: "",
       provider: "",
@@ -131,6 +151,7 @@ export function getProjectInfo(sessionId: string): ProjectInfo {
     shortId,
     keyDisplay,
     isSubagent,
+    agentName: meta.agentName || "",
     cwd: meta.cwd || "",
     contextTokens,
     provider: meta.provider || "",

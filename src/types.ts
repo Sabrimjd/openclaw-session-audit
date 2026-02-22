@@ -29,6 +29,7 @@ export interface SessionMetadata {
   model: string;
   chatType: string;
   key: string;
+  agentName?: string;
   contextTokens?: number;
   usedTokens?: number;
   provider?: string;
@@ -56,6 +57,7 @@ export interface ProjectInfo {
   shortId: string;
   keyDisplay: string;
   isSubagent: boolean;
+  agentName: string;
   cwd: string;
   contextTokens: string;
   provider: string;

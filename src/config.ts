@@ -9,11 +9,10 @@ import type { Config } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const PROJECT_ROOT = dirname(__dirname);
-export const SESSIONS_DIR = homedir() + "/.openclaw/agents/main/sessions";
+export const AGENTS_DIR = homedir() + "/.openclaw/agents";
 export const STATE_DIR = PROJECT_ROOT + "/state";
 export const STATE_FILE = STATE_DIR + "/state.json";
 export const PID_FILE = STATE_DIR + "/daemon.pid";
-export const SESSIONS_JSON = SESSIONS_DIR + "/sessions.json";
 
 export const TOOL_ICONS: Record<string, string> = {
   exec: "⚡", edit: "✏️", write: "📝", read: "📖", glob: "🔍", grep: "🔎",
@@ -82,6 +81,7 @@ export const MAX_BATCH_SIZE = CONFIG.maxBatchSize;
 export const MAX_SEEN_IDS = CONFIG.maxSeenIds;
 export const MAX_FILE_SIZE = CONFIG.maxFileSize;
 export const MAX_MESSAGE_LENGTH = CONFIG.maxMessageLength;
+export const TOOL_PREVIEW_LENGTH = 250;
 
 // Rate limiting
 export let retryAfterMs = 0;

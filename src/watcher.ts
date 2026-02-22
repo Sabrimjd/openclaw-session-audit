@@ -2,11 +2,11 @@
  * File watching and tailing logic
  */
 
-import { createReadStream, readdirSync, readFileSync, watch } from "node:fs";
+import { createReadStream, existsSync, readdirSync, readFileSync, watch } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { SESSIONS_DIR, MAX_FILE_SIZE } from "./config.js";
+import { AGENTS_DIR, MAX_FILE_SIZE } from "./config.js";
 import { state, hasSeenId } from "./state.js";
 import { sessionMetadata, getBaseSessionId, getThreadNumber, loadSessionsJson } from "./metadata.js";
 import { addEvent, pendingEvents, toolCallTimestamps } from "./events.js";
@@ -17,9 +17,31 @@ function isValidSessionFile(filename: string): boolean {
   return /^[a-f0-9-]{36}(-topic-\d+)?\.jsonl$/.test(filename);
 }
 
-export async function tailFile(filename: string): Promise<void> {
+function discoverAgents(): string[] {
+  try {
+    const entries = readdirSync(AGENTS_DIR, { withFileTypes: true });
+    return entries.filter(e => e.isDirectory()).map(e => e.name);
+  } catch {
+    return [];
+  }
+}
+
+// Reload sessions.json for all agents to pick up new sessions
+export function reloadAllSessionsJson(): void {
+  const agents = discoverAgents();
+  for (const agentName of agents) {
+    loadSessionsJson(agentName);
+  }
+  console.error("[session-audit] Reloaded sessions.json for all agents");
+}
+
+export async function tailFile(filename: string, agentName: string): Promise<void> {
   if (!isValidSessionFile(filename)) return;
-  const filepath = join(SESSIONS_DIR, filename);
+  const sessionsDir = join(AGENTS_DIR, agentName, "sessions");
+  const filepath = join(sessionsDir, filename);
+
+  // Use namespaced offset key to avoid conflicts between agents
+  const offsetKey = `${agentName}:${filename}`;
 
   let fileStat: Awaited<ReturnType<typeof stat>>;
   try {
@@ -30,10 +52,10 @@ export async function tailFile(filename: string): Promise<void> {
   }
 
   // Skip history: for new files, start at end
-  if (state.offsets[filename] === undefined) {
-    state.offsets[filename] = fileStat.size;
+  if (state.offsets[offsetKey] === undefined) {
+    state.offsets[offsetKey] = fileStat.size;
   }
-  const offset = state.offsets[filename];
+  const offset = state.offsets[offsetKey];
   const baseSessionId = getBaseSessionId(filename);
   const threadNumber = getThreadNumber(filename);
   const sessionKey = baseSessionId;
@@ -265,7 +287,7 @@ export async function tailFile(filename: string): Promise<void> {
         console.error("[session-audit] Failed to parse line:", err);
       }
     }
-    state.offsets[filename] = newOffset;
+    state.offsets[offsetKey] = newOffset;
   } catch (err) {
     console.error(`[session-audit] Error reading ${filename}:`, err);
   }
@@ -273,89 +295,110 @@ export async function tailFile(filename: string): Promise<void> {
 
 // Scan all files to build metadata before watching
 export async function scanAllFiles(): Promise<void> {
-  loadSessionsJson();
+  const agents = discoverAgents();
+  console.error("[session-audit] Discovered agents:", agents.join(", "));
 
-  try {
-    const files = readdirSync(SESSIONS_DIR).filter((f: string) => isValidSessionFile(f));
-    for (const file of files) {
-      const filepath = join(SESSIONS_DIR, file);
-      try {
-        const content = readFileSync(filepath, "utf8");
-        const lines = content.split("\n");
-        const sessionKey = getBaseSessionId(file);
-        const existing = sessionMetadata.get(sessionKey);
-        let projectName = existing?.projectName || sessionKey.slice(0, 8);
-        let cwd = existing?.cwd || "";
-        const chatType = existing?.chatType || "unknown";
-        let model = existing?.model || "";
-        const key = existing?.key || "";
-        const contextTokens = existing?.contextTokens;
-        let usedTokens = existing?.usedTokens;
-        const provider = existing?.provider;
-        const surface = existing?.surface;
-        const updatedAt = existing?.updatedAt;
-        const groupId = existing?.groupId;
-        let thinkingLevel = existing?.thinkingLevel;
+  for (const agentName of agents) {
+    loadSessionsJson(agentName);
 
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const row = JSON.parse(line);
-            if (row?.type === "session" && row?.cwd) {
-              const parts = row.cwd.split("/");
-              projectName = parts[parts.length - 1] || sessionKey;
-              cwd = row.cwd;
+    const sessionsDir = join(AGENTS_DIR, agentName, "sessions");
+    if (!existsSync(sessionsDir)) continue;
+
+    try {
+      const files = readdirSync(sessionsDir).filter((f: string) => isValidSessionFile(f));
+      for (const file of files) {
+        const filepath = join(sessionsDir, file);
+        try {
+          const content = readFileSync(filepath, "utf8");
+          const lines = content.split("\n");
+          const sessionKey = getBaseSessionId(file);
+          const existing = sessionMetadata.get(sessionKey);
+          let projectName = existing?.projectName || sessionKey.slice(0, 8);
+          let cwd = existing?.cwd || "";
+          const chatType = existing?.chatType || "unknown";
+          let model = existing?.model || "";
+          const key = existing?.key || "";
+          const contextTokens = existing?.contextTokens;
+          let usedTokens = existing?.usedTokens;
+          const provider = existing?.provider;
+          const surface = existing?.surface;
+          const updatedAt = existing?.updatedAt;
+          const groupId = existing?.groupId;
+          let thinkingLevel = existing?.thinkingLevel;
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const row = JSON.parse(line);
+              if (row?.type === "session" && row?.cwd) {
+                const parts = row.cwd.split("/");
+                projectName = parts[parts.length - 1] || sessionKey;
+                cwd = row.cwd;
+              }
+              if (row?.type === "thinking_level_change") {
+                thinkingLevel = row.thinkingLevel;
+              }
+              if (row?.message?.usage?.totalTokens) {
+                usedTokens = row.message.usage.totalTokens;
+              }
+              if (row?.type === "model_change" && row?.modelId) {
+                model = row.modelId;
+              }
+            } catch (err) {
+              console.error("[session-audit] Failed to parse line during scan:", err);
             }
-            if (row?.type === "thinking_level_change") {
-              thinkingLevel = row.thinkingLevel;
-            }
-            if (row?.message?.usage?.totalTokens) {
-              usedTokens = row.message.usage.totalTokens;
-            }
-            if (row?.type === "model_change" && row?.modelId) {
-              model = row.modelId;
-            }
-          } catch (err) {
-            console.error("[session-audit] Failed to parse line during scan:", err);
           }
+
+          sessionMetadata.set(sessionKey, {
+            cwd,
+            projectName,
+            model,
+            chatType,
+            key,
+            agentName,
+            contextTokens,
+            usedTokens,
+            provider,
+            surface,
+            updatedAt,
+            groupId,
+            thinkingLevel
+          });
+        } catch (err) {
+          console.error("[session-audit] Failed to read file during scan:", filepath, err);
         }
 
-        sessionMetadata.set(sessionKey, {
-          cwd,
-          projectName,
-          model,
-          chatType,
-          key,
-          contextTokens,
-          usedTokens,
-          provider,
-          surface,
-          updatedAt,
-          groupId,
-          thinkingLevel
-        });
-      } catch (err) {
-        console.error("[session-audit] Failed to read file during scan:", filepath, err);
+        // Tail the file for new events
+        await tailFile(file, agentName);
       }
-
-      // Tail the file for new events
-      await tailFile(file);
+    } catch (err) {
+      console.error(`[session-audit] Failed to scan files for agent ${agentName}:`, err);
     }
-  } catch (err) {
-    console.error("[session-audit] Failed to scan files:", err);
   }
+
+  console.error("[session-audit] Total sessions loaded:", sessionMetadata.size);
 }
 
 export function startWatcher(): void {
-  try {
-    const watcher = watch(SESSIONS_DIR, (_eventType: string, filename: string | null) => {
-      if (filename && isValidSessionFile(filename)) {
-        tailFile(filename).catch(console.error);
-      }
-    });
-    watcher.on("error", (err: Error) => console.error("[session-audit] Watcher error:", err));
-    console.error("[session-audit] Watching", SESSIONS_DIR);
-  } catch (err) {
-    console.error("[session-audit] Failed to start watcher:", err);
+  const agents = discoverAgents();
+  let watchCount = 0;
+
+  for (const agentName of agents) {
+    const sessionsDir = join(AGENTS_DIR, agentName, "sessions");
+    if (!existsSync(sessionsDir)) continue;
+
+    try {
+      const watcher = watch(sessionsDir, (_eventType: string, filename: string | null) => {
+        if (filename && isValidSessionFile(filename)) {
+          tailFile(filename, agentName).catch(console.error);
+        }
+      });
+      watcher.on("error", (err: Error) => console.error(`[session-audit] Watcher error for ${agentName}:`, err));
+      watchCount++;
+    } catch (err) {
+      console.error(`[session-audit] Failed to start watcher for ${agentName}:`, err);
+    }
   }
+
+  console.error(`[session-audit] Watching ${watchCount} agent session directories`);
 }

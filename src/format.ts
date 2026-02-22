@@ -2,7 +2,7 @@
  * Formatting utilities
  */
 
-import { TOOL_ICONS } from "./config.js";
+import { TOOL_ICONS, TOOL_PREVIEW_LENGTH } from "./config.js";
 import type { PendingEvent, DiffStats } from "./types.js";
 
 export function truncateText(text: string, maxLen: number): string {
@@ -85,7 +85,7 @@ export function formatEvent(event: PendingEvent): string | null {
 
     if (name === "exec" || name === "bash") {
       const cmd = String(data.command || (data.args as Record<string, unknown> | undefined)?.command || "");
-      return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${truncateText(cmd, 60)}`;
+      return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${truncateText(cmd, TOOL_PREVIEW_LENGTH)}`;
     }
     if (name === "edit" || name === "write") {
       const path = String(data.path || data.file_path || (data.args as Record<string, unknown> | undefined)?.file_path || (data.args as Record<string, unknown> | undefined)?.path || "");
@@ -102,18 +102,18 @@ export function formatEvent(event: PendingEvent): string | null {
     }
     if (["grep_search", "glob_search", "grep", "glob"].includes(name)) {
       const pattern = String(data.pattern || (data.args as Record<string, unknown> | undefined)?.pattern || "");
-      return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${truncateText(pattern, 40)}`;
+      return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${truncateText(pattern, TOOL_PREVIEW_LENGTH)}`;
     }
     if (["webfetch", "web_fetch", "web_search", "http", "http_request"].includes(name)) {
       const url = String(data.url || (data.args as Record<string, unknown> | undefined)?.url || data.query || (data.args as Record<string, unknown> | undefined)?.query || "");
-      return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${truncateText(url, 50)}`;
+      return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${truncateText(url, TOOL_PREVIEW_LENGTH)}`;
     }
 
     // Process tool - shows action + sessionId
     if (name === "process") {
       const action = getArg(data, "action");
       const sessionId = getArg(data, "sessionId");
-      return `${time} ${errorPrefix}${icon} process${durationStr}: ${action}${sessionId ? ` (${truncateText(sessionId, 20)})` : ""}`;
+      return `${time} ${errorPrefix}${icon} process${durationStr}: ${action}${sessionId ? ` (${truncateText(sessionId, TOOL_PREVIEW_LENGTH)})` : ""}`;
     }
 
     // Gateway tool - shows action
@@ -126,7 +126,7 @@ export function formatEvent(event: PendingEvent): string | null {
     if (name === "sessions_spawn") {
       const label = getArg(data, "label");
       const model = getArg(data, "model");
-      return `${time} ${errorPrefix}${icon} spawn${durationStr}: ${truncateText(label, 40)}${model ? ` [${model}]` : ""}`;
+      return `${time} ${errorPrefix}${icon} spawn${durationStr}: ${truncateText(label, TOOL_PREVIEW_LENGTH)}${model ? ` [${model}]` : ""}`;
     }
     if (name === "sessions_list" || name === "sessions_history") {
       const action = getArg(data, "action") || name.replace("sessions_", "");
@@ -134,14 +134,14 @@ export function formatEvent(event: PendingEvent): string | null {
     }
     if (name === "sessions_send") {
       const target = getArg(data, "target");
-      return `${time} ${errorPrefix}${icon} send${durationStr}: ${truncateText(target, 30)}`;
+      return `${time} ${errorPrefix}${icon} send${durationStr}: ${truncateText(target, TOOL_PREVIEW_LENGTH)}`;
     }
 
     // Message tool - shows channel + message preview
     if (name === "message") {
       const channel = getArg(data, "channel");
       const message = getArg(data, "message");
-      return `${time} ${errorPrefix}${icon} message${durationStr}: ${channel}${message ? ` - ${truncateText(message, 40)}` : ""}`;
+      return `${time} ${errorPrefix}${icon} message${durationStr}: ${channel}${message ? ` - ${truncateText(message, TOOL_PREVIEW_LENGTH)}` : ""}`;
     }
 
     // Subagents tool - shows action + target
@@ -152,26 +152,26 @@ export function formatEvent(event: PendingEvent): string | null {
       if (action === "list" && recent) {
         return `${time} ${errorPrefix}${icon} subagents${durationStr}: list (last ${recent}m)`;
       }
-      return `${time} ${errorPrefix}${icon} subagents${durationStr}: ${action}${target ? ` ${truncateText(target, 20)}` : ""}`;
+      return `${time} ${errorPrefix}${icon} subagents${durationStr}: ${action}${target ? ` ${truncateText(target, TOOL_PREVIEW_LENGTH)}` : ""}`;
     }
 
     // Cron tool - shows action + jobId
     if (name === "cron") {
       const action = getArg(data, "action");
       const jobId = getArg(data, "jobId");
-      return `${time} ${errorPrefix}${icon} cron${durationStr}: ${action}${jobId ? ` (${truncateText(jobId, 20)})` : ""}`;
+      return `${time} ${errorPrefix}${icon} cron${durationStr}: ${action}${jobId ? ` (${truncateText(jobId, TOOL_PREVIEW_LENGTH)})` : ""}`;
     }
 
     // Memory search - shows query
     if (name === "memory_search") {
       const query = getArg(data, "query");
-      return `${time} ${errorPrefix}${icon} memory${durationStr}: ${truncateText(query, 40)}`;
+      return `${time} ${errorPrefix}${icon} memory${durationStr}: ${truncateText(query, TOOL_PREVIEW_LENGTH)}`;
     }
 
     // Browser - shows url
     if (name === "browser") {
       const url = getArg(data, "url");
-      return `${time} ${errorPrefix}${icon} browser${durationStr}: ${truncateText(url, 50)}`;
+      return `${time} ${errorPrefix}${icon} browser${durationStr}: ${truncateText(url, TOOL_PREVIEW_LENGTH)}`;
     }
 
     return `${time} ${errorPrefix}${icon} ${name}${durationStr}`;
@@ -192,13 +192,13 @@ export function formatEvent(event: PendingEvent): string | null {
     const messagePreview = String(data.messagePreview || data.text || "");
     let msg = `${time} ✅ Response completed`;
     if (tokens) msg += ` (${tokens.toLocaleString()} tokens)`;
-    if (messagePreview) msg += `: "${truncateText(messagePreview.replace(/\n/g, " "), 80)}"`;
+    if (messagePreview) msg += `: "${truncateText(messagePreview.replace(/\n/g, " "), TOOL_PREVIEW_LENGTH)}"`;
     return msg;
   }
 
   if (type === "thinking") {
     const preview = String(data.preview || data.text || "");
-    return `${time} 💭 Thinking: "${truncateText(preview.replace(/\n/g, " "), 80)}"`;
+    return `${time} 💭 Thinking: "${truncateText(preview.replace(/\n/g, " "), TOOL_PREVIEW_LENGTH)}"`;
   }
 
   if (type === "thinking_level") {
@@ -208,7 +208,7 @@ export function formatEvent(event: PendingEvent): string | null {
 
   if (type === "error") {
     const msg = String(data.error || data.message || "Unknown error");
-    return `${time} ❌ Error: ${truncateText(msg, 100)}`;
+    return `${time} ❌ Error: ${truncateText(msg, TOOL_PREVIEW_LENGTH)}`;
   }
 
   if (type === "model_change") {

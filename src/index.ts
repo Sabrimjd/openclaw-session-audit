@@ -4,7 +4,7 @@
 
 import { CONFIG } from "./config.js";
 import { loadState, checkSingleInstance, writePidFile, saveState } from "./state.js";
-import { scanAllFiles, startWatcher } from "./watcher.js";
+import { scanAllFiles, startWatcher, reloadAllSessionsJson } from "./watcher.js";
 import { setMessageFunctions } from "./events.js";
 import { buildMessage, sendMessage } from "./message.js";
 
@@ -31,8 +31,9 @@ async function main(): Promise<void> {
   await scanAllFiles();
   startWatcher();
 
-  // Save state periodically
+  // Save state and reload sessions.json periodically
   setInterval(saveState, 30000);
+  setInterval(reloadAllSessionsJson, 30000);
 }
 
 main().catch(console.error);
