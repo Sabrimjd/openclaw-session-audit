@@ -40,12 +40,13 @@ export function loadConfig(): Config {
     channel: "",
     targetId: "",
     rateLimitMs: 2000,
-    batchWindowMs: 8000,
+    batchWindowMs: 10000,
     maxBatchSize: 15,
     maxMessageLength: 1700,
     maxFileSize: 10_000_000,
     maxSeenIds: 5000,
-    agentEmojis: { clawd: "🦞" }
+    agentEmojis: { clawd: "🦞" },
+    headerIntervalMs: 60000
   };
 
   if (process.env.SESSION_AUDIT_CHANNEL) {
@@ -59,6 +60,9 @@ export function loadConfig(): Config {
   }
   if (process.env.SESSION_AUDIT_BATCH_WINDOW_MS) {
     defaults.batchWindowMs = parseInt(process.env.SESSION_AUDIT_BATCH_WINDOW_MS, 10);
+  }
+  if (process.env.SESSION_AUDIT_HEADER_INTERVAL_MS) {
+    defaults.headerIntervalMs = parseInt(process.env.SESSION_AUDIT_HEADER_INTERVAL_MS, 10);
   }
   if (process.env.SESSION_AUDIT_AGENT_EMOJIS) {
     try {
@@ -81,6 +85,7 @@ export const MAX_BATCH_SIZE = CONFIG.maxBatchSize;
 export const MAX_SEEN_IDS = CONFIG.maxSeenIds;
 export const MAX_FILE_SIZE = CONFIG.maxFileSize;
 export const MAX_MESSAGE_LENGTH = CONFIG.maxMessageLength;
+export const HEADER_INTERVAL_MS = CONFIG.headerIntervalMs;
 export const TOOL_PREVIEW_LENGTH = 250;
 
 // Rate limiting

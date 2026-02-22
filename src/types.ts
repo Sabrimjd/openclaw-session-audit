@@ -12,6 +12,7 @@ export interface Config {
   maxFileSize: number;
   maxSeenIds: number;
   agentEmojis: Record<string, string>;
+  headerIntervalMs: number;
 }
 
 export interface PendingEvent {

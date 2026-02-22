@@ -22,6 +22,7 @@ export function loadSessionsJson(agentName: string): void {
       const sessionId = typeof sessionData.sessionId === "string" ? sessionData.sessionId : undefined;
       const updatedAt = typeof sessionData.updatedAt === "number" ? sessionData.updatedAt : undefined;
       const contextTokens = typeof sessionData.contextTokens === "number" ? sessionData.contextTokens : undefined;
+      const model = typeof sessionData.model === "string" ? sessionData.model : undefined;
 
       if (sessionId) {
         // Parse key format: agent:<agent>:<surface>:<type>:<id>
@@ -69,11 +70,12 @@ export function loadSessionsJson(agentName: string): void {
           existing.updatedAt = formattedUpdatedAt;
           existing.groupId = groupId;
           if (contextTokens) existing.contextTokens = contextTokens;
+          if (model) existing.model = model;
         } else {
           sessionMetadata.set(sessionId, {
             cwd: "",
             projectName: sessionId.slice(0, 8),
-            model: "",
+            model: model || "",
             chatType,
             key,
             agentName: keyAgentName,
@@ -146,7 +148,7 @@ export function getProjectInfo(sessionId: string): ProjectInfo {
   return {
     name: projectName,
     emoji,
-    model: meta.model ? ` (${meta.model.split("/").pop()})` : "",
+    model: meta.model ? ` (${meta.model})` : "",
     chatType: meta.chatType || "unknown",
     shortId,
     keyDisplay,

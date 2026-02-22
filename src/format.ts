@@ -107,15 +107,42 @@ export function formatEvent(event: PendingEvent): string | null {
       return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${truncateText(pattern, TOOL_PREVIEW_LENGTH)}`;
     }
     if (["webfetch", "web_fetch", "web_search", "http", "http_request"].includes(name)) {
-      const url = String(data.url || (data.args as Record<string, unknown> | undefined)?.url || data.query || (data.args as Record<string, unknown> | undefined)?.query || "");
-      return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${truncateText(url, TOOL_PREVIEW_LENGTH)}`;
+      const args = data.args as Record<string, unknown> | undefined;
+      const url = String(data.url || args?.url || "");
+      const query = String(data.query || args?.query || "");
+      // For web_search, show query; for others, show url
+      const display = name === "web_search" ? query : url;
+      return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${truncateText(display, TOOL_PREVIEW_LENGTH)}`;
     }
 
-    // Process tool - shows action + sessionId
+    // Process tool - shows action + command + sessionId + status
     if (name === "process") {
       const action = getArg(data, "action");
       const sessionId = getArg(data, "sessionId");
-      return `${time} ${errorPrefix}${icon} process${durationStr}: ${action}${sessionId ? ` (${truncateText(sessionId, TOOL_PREVIEW_LENGTH)})` : ""}`;
+      const command = getArg(data, "name");
+      const status = getArg(data, "status");
+      const exitCode = getArg(data, "exitCode");
+
+      let details = action;
+
+      // Show command for spawn
+      if (command && (action === "spawn" || action === "list")) {
+        details += ` [${truncateText(command, 30)}]`;
+      }
+
+      // Show status for poll
+      if (status && action === "poll") {
+        details += ` (${status})`;
+        if (exitCode !== "" && exitCode !== "0") {
+          details += ` exit:${exitCode}`;
+        }
+      }
+      // Show sessionId for other actions
+      else if (sessionId && !status) {
+        details += ` (${truncateText(sessionId, 20)})`;
+      }
+
+      return `${time} ${errorPrefix}${icon} process${durationStr}: ${details}`;
     }
 
     // Gateway tool - shows action
@@ -139,11 +166,22 @@ export function formatEvent(event: PendingEvent): string | null {
       return `${time} ${errorPrefix}${icon} send${durationStr}: ${truncateText(target, TOOL_PREVIEW_LENGTH)}`;
     }
 
-    // Message tool - shows channel + message preview
+    // Message tool - shows channel + target + message preview
     if (name === "message") {
       const channel = getArg(data, "channel");
+      const target = getArg(data, "target");
       const message = getArg(data, "message");
-      return `${time} ${errorPrefix}${icon} message${durationStr}: ${channel}${message ? ` - ${truncateText(message, TOOL_PREVIEW_LENGTH)}` : ""}`;
+
+      // Format target for display (truncate long IDs)
+      let targetDisplay = "";
+      if (target) {
+        // Show "channel:14647668..." or "user:12345678..."
+        targetDisplay = target.length > 20
+          ? ` → ${target.slice(0, 20)}...`
+          : ` → ${target}`;
+      }
+
+      return `${time} ${errorPrefix}${icon} message${durationStr}: ${channel}${targetDisplay}${message ? ` - ${truncateText(message, TOOL_PREVIEW_LENGTH)}` : ""}`;
     }
 
     // Subagents tool - shows action + target
@@ -157,11 +195,28 @@ export function formatEvent(event: PendingEvent): string | null {
       return `${time} ${errorPrefix}${icon} subagents${durationStr}: ${action}${target ? ` ${truncateText(target, TOOL_PREVIEW_LENGTH)}` : ""}`;
     }
 
-    // Cron tool - shows action + jobId
+    // Cron tool - shows action + schedule + job name/jobId
     if (name === "cron") {
       const action = getArg(data, "action");
       const jobId = getArg(data, "jobId");
-      return `${time} ${errorPrefix}${icon} cron${durationStr}: ${action}${jobId ? ` (${truncateText(jobId, TOOL_PREVIEW_LENGTH)})` : ""}`;
+      const args = data.args as Record<string, unknown> | undefined;
+      const job = args?.job as Record<string, unknown> | undefined;
+      const jobSchedule = job?.schedule as Record<string, unknown> | undefined;
+      const jobName = job?.name as string | undefined;
+      const schedule = getArg(data, "schedule") || getArg(data, "cron") || String(jobSchedule?.expr || "");
+
+      let details = action;
+      if (schedule) details += ` [${truncateText(schedule, 30)}]`;
+      if (jobName && action === "add") details += ` "${truncateText(jobName, 20)}"`;
+      if (jobId && action !== "add") details += ` (${truncateText(jobId, 20)})`;
+
+      return `${time} ${errorPrefix}${icon} cron${durationStr}: ${details}`;
+    }
+
+    // GitHub CLI - shows command
+    if (name === "gh") {
+      const command = getArg(data, "command") || getArg(data, "args");
+      return `${time} ${errorPrefix}${icon} gh${durationStr}: ${truncateText(command, TOOL_PREVIEW_LENGTH)}`;
     }
 
     // Memory search - shows query

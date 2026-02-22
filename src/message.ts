@@ -3,10 +3,13 @@
  */
 
 import { spawn } from "node:child_process";
-import { CONFIG, OPENCLAW_BIN, MAX_MESSAGE_LENGTH } from "./config.js";
+import { CONFIG, OPENCLAW_BIN, MAX_MESSAGE_LENGTH, HEADER_INTERVAL_MS } from "./config.js";
 import { truncateText, formatEvent } from "./format.js";
 import { getProjectInfo } from "./metadata.js";
 import type { PendingEvent } from "./types.js";
+
+// Track when each session last showed a header
+const lastHeaderTime = new Map<string, number>();
 
 export function buildMessage(groupKey: string, events: PendingEvent[]): string {
   let sessionKey = groupKey;
@@ -46,8 +49,23 @@ export function buildMessage(groupKey: string, events: PendingEvent[]): string {
   if (metaParts.length > 0) parts.push(metaParts.join(" | "));
 
   const header = parts.join(" ");
-  const lines: string[] = [header];
-  let totalLen = header.length + 1;
+
+  // Check if we should show the header (once per minute per session)
+  const now = Date.now();
+  const lastHeader = lastHeaderTime.get(groupKey) || 0;
+  const showHeader = (now - lastHeader) >= HEADER_INTERVAL_MS;
+
+  if (showHeader) {
+    lastHeaderTime.set(groupKey, now);
+  }
+
+  const lines: string[] = [];
+  let totalLen = 0;
+
+  if (showHeader) {
+    lines.push(header);
+    totalLen = header.length + 1;
+  }
 
   for (const event of events) {
     const formatted = formatEvent(event);

@@ -131,6 +131,15 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
           }
         }
 
+        // Capture model-snapshot events (initial model at session start)
+        if (rowType === "custom" && row?.customType === "model-snapshot" && row?.data?.modelId) {
+          const existing = sessionMetadata.get(sessionKey);
+          const newModel = row.data.modelId;
+          if (existing && !existing.model) {
+            existing.model = newModel;
+          }
+        }
+
         // Track errors
         if (rowType === "error" && (row?.error || row?.message)) {
           const errorMsg = row.error || row.message || "Unknown error";
@@ -359,6 +368,9 @@ export async function scanAllFiles(): Promise<void> {
               }
               if (row?.type === "model_change" && row?.modelId) {
                 model = row.modelId;
+              }
+              if (row?.type === "custom" && row?.customType === "model-snapshot" && row?.data?.modelId) {
+                if (!model) model = row.data.modelId;
               }
             } catch (err) {
               console.error("[session-audit] Failed to parse line during scan:", err);
