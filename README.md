@@ -1,6 +1,6 @@
 # OpenClaw Session Audit
 
-[[pic/logo.png]]
+![Logo](pic/logo.png)
 
 [![npm version](https://badge.fury.io/js/openclaw-session-audit.svg)](https://badge.fury.io/js/openclaw-session-audit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -8,7 +8,7 @@
 
 Monitor all OpenClaw session events and stream them to any channel (Discord, Telegram, Slack, etc.) in real-time.
 
-[[pic/screenshot2.png]]
+![Logo](pic/screenshot2.png)
 
 
 ## Installation
