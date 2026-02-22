@@ -131,6 +131,22 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
           }
         }
 
+        // Track errors
+        if (rowType === "error" && (row?.error || row?.message)) {
+          const errorMsg = row.error || row.message || "Unknown error";
+          const id = `error:${row.id || Date.now()}:${String(errorMsg).slice(0, 50)}`;
+          if (!hasSeenId(id)) {
+            addEvent(sessionKey, {
+              type: "error",
+              id,
+              sessionKey,
+              timestamp: new Date(row.timestamp).getTime(),
+              data: { error: String(errorMsg), message: String(errorMsg) },
+              threadNumber: threadNumber || undefined,
+            });
+          }
+        }
+
         // Track token usage
         if (row?.message?.usage?.totalTokens) {
           const existing = sessionMetadata.get(sessionKey);

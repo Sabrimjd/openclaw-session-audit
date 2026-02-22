@@ -12,6 +12,31 @@ Monitor all OpenClaw session events and stream them to any channel (Discord, Tel
 openclaw plugins install openclaw-session-audit
 ```
 
+## Updating
+
+To update to the latest version:
+
+```bash
+# Remove old version and install latest
+rm -rf ~/.openclaw/extensions/openclaw-session-audit
+openclaw plugins install openclaw-session-audit
+
+# Kill any orphaned daemon processes
+pkill -f "session-audit"
+
+# Restart the gateway
+systemctl --user restart openclaw-gateway.service
+
+# Verify only ONE daemon tree is running (5 processes)
+ps aux | grep "session-audit" | grep -v grep | wc -l
+```
+
+To update to a specific version:
+
+```bash
+openclaw plugins install openclaw-session-audit@1.0.8
+```
+
 ## Configuration
 
 Configure in your OpenClaw config (`~/.openclaw/openclaw.json`):
