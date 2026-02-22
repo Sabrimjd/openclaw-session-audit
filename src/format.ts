@@ -88,7 +88,8 @@ export function formatEvent(event: PendingEvent): string | null {
       return `${time} ${errorPrefix}${icon} ${name}${durationStr}: ${truncateText(cmd, TOOL_PREVIEW_LENGTH)}`;
     }
     if (name === "edit" || name === "write") {
-      const path = String(data.path || data.file_path || (data.args as Record<string, unknown> | undefined)?.file_path || (data.args as Record<string, unknown> | undefined)?.path || "");
+      const args = data.args as Record<string, unknown> | undefined;
+      const path = String(data.file_path || data.path || args?.file_path || args?.path || args?.filePath || "");
       const summary = path || "(unknown)";
       let diffStr = "";
       if (diffStats) {
@@ -97,7 +98,8 @@ export function formatEvent(event: PendingEvent): string | null {
       return `${time} ${errorPrefix}${icon} ${name}${durationStr}${diffStr}: \`${summary}\``;
     }
     if (name === "read") {
-      const path = String(data.path || data.file_path || (data.args as Record<string, unknown> | undefined)?.file_path || "");
+      const args = data.args as Record<string, unknown> | undefined;
+      const path = String(data.file_path || data.path || args?.file_path || args?.path || args?.filePath || "");
       return `${time} ${errorPrefix}${icon} read${durationStr}: \`${path || "(unknown)"}\``;
     }
     if (["grep_search", "glob_search", "grep", "glob"].includes(name)) {
