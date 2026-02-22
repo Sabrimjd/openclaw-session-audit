@@ -1,8 +1,9 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, unlinkSync, mkdirSync } from "node:fs";
+import { existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = join(__dirname, "state");
@@ -28,25 +29,25 @@ function ensureStateDir() {
   }
 }
 
-function isProcessRunning(pid: number): boolean {
+function killAllDaemons(): void {
   try {
-    process.kill(pid, 0);
-    return true;
+    // Use pkill to kill all session-audit daemon processes
+    // This ensures we don't have orphaned daemons running
+    execSync('pkill -f "tsx.*session-audit.*index.ts" 2>/dev/null || true');
   } catch {
-    return false;
+    // Ignore errors if no processes found
   }
 }
 
 function startDaemon(api: OpenClawPluginApi) {
   ensureStateDir();
 
+  // Kill ALL existing daemon processes first to prevent duplicates
+  killAllDaemons();
+
+  // Clean up PID file
   if (existsSync(PID_FILE)) {
     try {
-      const pid = parseInt(readFileSync(PID_FILE, "utf8").trim(), 10);
-      if (isProcessRunning(pid)) {
-        api.logger.info(`[session-audit] Daemon already running, PID: ${pid}`);
-        return;
-      }
       unlinkSync(PID_FILE);
     } catch {}
   }
@@ -79,13 +80,13 @@ function startDaemon(api: OpenClawPluginApi) {
 }
 
 function stopDaemon(logger: OpenClawPluginApi["logger"]) {
+  // Kill all daemon processes using pkill for consistency
+  killAllDaemons();
+  logger.info(`[session-audit] Stopped all daemon processes`);
+
+  // Clean up PID file
   if (existsSync(PID_FILE)) {
     try {
-      const pid = parseInt(readFileSync(PID_FILE, "utf8").trim(), 10);
-      if (isProcessRunning(pid)) {
-        process.kill(pid, "SIGTERM");
-        logger.info(`[session-audit] Stopped daemon, PID: ${pid}`);
-      }
       unlinkSync(PID_FILE);
     } catch {}
   }

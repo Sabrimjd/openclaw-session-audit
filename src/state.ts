@@ -52,24 +52,14 @@ export function writePidFile(): void {
 }
 
 export function checkSingleInstance(): boolean {
+  // The parent (index.ts) should have killed all daemons already
+  // This is a safety check - clean up any stale PID file
   try {
     if (existsSync(PID_FILE)) {
-      const existingPid = parseInt(readFileSync(PID_FILE, "utf8").trim(), 10);
-      if (existingPid && !isNaN(existingPid)) {
-        // Check if process is still running
-        try {
-          process.kill(existingPid, 0); // Throws if process doesn't exist
-          console.error("[session-audit] Another instance is already running with PID", existingPid);
-          return false;
-        } catch {
-          // Process doesn't exist, safe to continue
-          console.error("[session-audit] Stale PID file found, removing");
-          unlinkSync(PID_FILE);
-        }
-      }
+      unlinkSync(PID_FILE);
     }
-  } catch (err) {
-    console.error("[session-audit] Error checking PID file:", err);
+  } catch {
+    // Ignore errors
   }
   return true;
 }
