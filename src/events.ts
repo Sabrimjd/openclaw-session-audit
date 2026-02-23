@@ -31,9 +31,20 @@ async function flushEvents(groupKey: string): Promise<void> {
   pendingEvents.delete(groupKey);
   batchTimers.delete(groupKey);
 
-  if (Date.now() < getRetryAfter()) return;
+  if (Date.now() < getRetryAfter()) {
+    if (process.env.SESSION_AUDIT_DEBUG) {
+      console.error(`[session-audit] DEBUG: flushEvents SKIPPED (rate limited) groupKey=${groupKey} events=${events.length}`);
+    }
+    return;
+  }
 
+  if (process.env.SESSION_AUDIT_DEBUG) {
+    console.error(`[session-audit] DEBUG: flushEvents groupKey=${groupKey} events=${events.length} types=${events.map(e => e.type).join(',')}`);
+  }
   const message = _buildMessage(groupKey, events);
+  if (process.env.SESSION_AUDIT_DEBUG) {
+    console.error(`[session-audit] DEBUG: SENDING MESSAGE (${message.length} chars):\n${message.slice(0, 500)}...`);
+  }
   await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_MS));
   _sendMessage(message);
 }
@@ -63,5 +74,8 @@ export function addEvent(sessionKey: string, event: PendingEvent): void {
     pendingEvents.set(groupKey, []);
   }
   pendingEvents.get(groupKey)!.push(event);
+  if (process.env.SESSION_AUDIT_DEBUG) {
+    console.error(`[session-audit] DEBUG: addEvent type=${event.type} id=${event.id} groupKey=${groupKey} batch size=${pendingEvents.get(groupKey)!.length}`);
+  }
   scheduleFlush(groupKey);
 }

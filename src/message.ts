@@ -67,9 +67,13 @@ export function buildMessage(groupKey: string, events: PendingEvent[]): string {
     totalLen = header.length + 1;
   }
 
+  let skippedCount = 0;
   for (const event of events) {
     const formatted = formatEvent(event);
-    if (!formatted) continue; // Skip null results
+    if (!formatted) {
+      skippedCount++;
+      continue; // Skip null results
+    }
     if (totalLen + formatted.length + 1 > MAX_MESSAGE_LENGTH - 50) {
       const remaining = events.length - lines.length + 1;
       if (remaining > 0) {
@@ -79,6 +83,13 @@ export function buildMessage(groupKey: string, events: PendingEvent[]): string {
     }
     lines.push(formatted);
     totalLen += formatted.length + 1;
+  }
+
+  if (skippedCount > 0) {
+    console.error(`[session-audit] DEBUG: buildMessage skipped ${skippedCount} null events`);
+  }
+  if (process.env.SESSION_AUDIT_DEBUG) {
+    console.error(`[session-audit] DEBUG: buildMessage output ${lines.length} lines from ${events.length} events`);
   }
 
   return lines.join("\n");
@@ -91,6 +102,9 @@ export function sendMessage(text: string): void {
   }
 
   const truncated = truncateText(text, MAX_MESSAGE_LENGTH);
+  if (process.env.SESSION_AUDIT_DEBUG) {
+    console.error(`[session-audit] DEBUG: sendMessage channel=${CONFIG.channel} target=${CONFIG.targetId} length=${truncated.length}`);
+  }
 
   const child = spawn(OPENCLAW_BIN, [
     "message", "send", "--channel", CONFIG.channel,

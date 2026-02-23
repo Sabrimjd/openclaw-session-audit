@@ -32,13 +32,26 @@ export function saveState(): void {
   }
 }
 
-export function hasSeenId(id: string): boolean {
-  if (seenIdsSet.has(id)) return true;
+export function hasBeenSeen(id: string): boolean {
+  return seenIdsSet.has(id);
+}
+
+export function markAsSeen(id: string): void {
   seenIdsSet.add(id);
   if (seenIdsSet.size > MAX_SEEN_IDS) {
     const arr = [...seenIdsSet].slice(-MAX_SEEN_IDS);
     seenIdsSet = new Set(arr);
   }
+}
+
+export function hasSeenId(id: string): boolean {
+  if (seenIdsSet.has(id)) {
+    if (process.env.SESSION_AUDIT_DEBUG) {
+      console.error(`[session-audit] DEBUG: hasSeenId DUPLICATE id=${id}`);
+    }
+    return true;
+  }
+  markAsSeen(id);
   return false;
 }
 

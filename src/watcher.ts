@@ -7,7 +7,7 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { AGENTS_DIR, MAX_FILE_SIZE } from "./config.js";
-import { state, hasSeenId } from "./state.js";
+import { state, hasSeenId, hasBeenSeen } from "./state.js";
 import { sessionMetadata, getBaseSessionId, getThreadNumber, loadSessionsJson } from "./metadata.js";
 import { addEvent, pendingEvents, toolCallTimestamps } from "./events.js";
 import { parseDiffStats, extractSenderName } from "./format.js";
@@ -51,9 +51,15 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
     return;
   }
 
-  // Skip history: for new files, start at end
+  // Skip history: for new files, start at end (unless DEBUG_PROCESS_ALL is set)
+  const debugProcessAll = process.env.SESSION_AUDIT_DEBUG_PROCESS_ALL === "true";
   if (state.offsets[offsetKey] === undefined) {
-    state.offsets[offsetKey] = fileStat.size;
+    if (debugProcessAll) {
+      state.offsets[offsetKey] = 0;  // Process from beginning for debugging
+      console.error(`[session-audit] DEBUG: Processing file from beginning (DEBUG_PROCESS_ALL=true): ${filename}`);
+    } else {
+      state.offsets[offsetKey] = fileStat.size;  // Skip to end
+    }
   }
   const offset = state.offsets[offsetKey];
   const baseSessionId = getBaseSessionId(filename);
@@ -214,6 +220,9 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
                 const thinking = (item as { thinking: string }).thinking;
                 const id = `thinking:${row.id}:${thinking.slice(0, 50)}`;
                 if (!hasSeenId(id)) {
+                  if (process.env.SESSION_AUDIT_DEBUG) {
+                    console.error(`[session-audit] DEBUG: Adding thinking event id=${id}`);
+                  }
                   addEvent(sessionKey, {
                     type: "thinking",
                     id,
@@ -232,6 +241,9 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
                 const args = toolItem.arguments || {};
                 const toolId = String(toolItem.id || "").trim() || `${name}:${JSON.stringify(args).slice(0, 100)}`;
 
+                if (process.env.SESSION_AUDIT_DEBUG) {
+                  console.error(`[session-audit] DEBUG: Found toolCall name=${name} id=${toolId} seen=${hasBeenSeen(toolId)}`);
+                }
                 if (!hasSeenId(toolId)) {
                   toolCallTimestamps.set(toolId, { timestamp: new Date(row.timestamp).getTime(), sessionKey });
 
@@ -263,6 +275,9 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
                 messagePreview = (textItem as { text?: string })?.text || "";
               }
 
+              if (process.env.SESSION_AUDIT_DEBUG) {
+                console.error(`[session-audit] DEBUG: Adding assistant_complete event id=${id} stopReason=${message.stopReason} tokens=${message.usage?.totalTokens}`);
+              }
               addEvent(sessionKey, {
                 type: "assistant_complete",
                 id,
@@ -283,6 +298,9 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
         if (message.role === "toolResult" && message.toolCallId) {
           const toolCallId = message.toolCallId;
           const callInfo = toolCallTimestamps.get(toolCallId);
+          if (process.env.SESSION_AUDIT_DEBUG) {
+            console.error(`[session-audit] DEBUG: toolResult for ${toolCallId}, found in timestamps=${!!callInfo}`);
+          }
           if (callInfo) {
             // Find and update the pending tool call
             const groupKey = threadNumber ? `${sessionKey}-topic-${threadNumber}` : sessionKey;
@@ -303,6 +321,9 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
                   data.durationMs = message.details.durationMs;
                 } else if (resultTs && toolEvent.timestamp) {
                   data.durationMs = resultTs - toolEvent.timestamp;
+                }
+                if (process.env.SESSION_AUDIT_DEBUG) {
+                  console.error(`[session-audit] DEBUG: Updated toolCall ${toolCallId} with duration=${data.durationMs}ms isError=${data.isError}`);
                 }
               }
             }

@@ -1,7 +1,7 @@
 {
   "id": "openclaw-session-audit",
   "name": "Session Audit",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Monitor OpenClaw sessions and stream events to any channel",
   "main": "index.ts",
   "configSchema": {

@@ -67,6 +67,58 @@ To update to a specific version:
 openclaw plugins install openclaw-session-audit@1.0.8
 ```
 
+## Development
+
+### Local Development Deployment
+
+To test local changes without publishing:
+
+```bash
+# Option 1: Copy individual files (faster iteration)
+cp src/watcher.ts ~/.openclaw/extensions/openclaw-session-audit/src/
+cp src/events.ts ~/.openclaw/extensions/openclaw-session-audit/src/
+cp src/format.ts ~/.openclaw/extensions/openclaw-session-audit/src/
+cp src/message.ts ~/.openclaw/extensions/openclaw-session-audit/src/
+cp src/state.ts ~/.openclaw/extensions/openclaw-session-audit/src/
+cp src/config.ts ~/.openclaw/extensions/openclaw-session-audit/src/
+cp index.ts ~/.openclaw/extensions/openclaw-session-audit/
+
+# Option 2: Copy entire plugin (full refresh)
+rm -rf ~/.openclaw/extensions/openclaw-session-audit
+cp -r /path/to/openclaw-session-audit ~/.openclaw/extensions/openclaw-session-audit
+
+# Restart to apply changes
+pkill -f "session-audit"
+systemctl --user restart openclaw-gateway.service
+
+# Verify daemon started
+ps aux | grep "session-audit" | grep -v grep
+```
+
+### Manual Daemon Testing
+
+Test the daemon directly without the gateway:
+
+```bash
+cd ~/.openclaw/extensions/openclaw-session-audit
+SESSION_AUDIT_CHANNEL=discord \
+SESSION_AUDIT_TARGET_ID=YOUR_CHANNEL_ID \
+npx tsx src/index.ts
+```
+
+### Clear State (Debug)
+
+To force reprocessing of all session files:
+
+```bash
+# Clear state file
+rm -rf ~/.openclaw/extensions/openclaw-session-audit/state/state.json
+
+# Restart daemon
+pkill -f "session-audit"
+systemctl --user restart openclaw-gateway.service
+```
+
 ## Configuration
 
 Configure in your OpenClaw config (`~/.openclaw/openclaw.json`):
@@ -97,6 +149,16 @@ Configure in your OpenClaw config (`~/.openclaw/openclaw.json`):
 | `batchWindowMs` | No | Batch window for grouping events (ms) | 8000 |
 | `maxBatchSize` | No | Max events per batch | 15 |
 | `agentEmojis` | No | Emoji mappings for agents | `{ clawd: "🦞" }` |
+| `headerIntervalMs` | No | How often to show session header (ms) | 60000 |
+
+### Environment Variables
+
+For advanced configuration, set these environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `SESSION_AUDIT_DEBUG` | Enable verbose debug logging (`true`/`false`) |
+| `SESSION_AUDIT_DEBUG_PROCESS_ALL` | Reprocess all history on startup (`true`/`false`) |
 
 ### Channel Examples
 
@@ -125,6 +187,51 @@ Configure in your OpenClaw config (`~/.openclaw/openclaw.json`):
   "channel": "slack",
   "targetId": "C12345678"
 }
+```
+
+## Logging
+
+### Daemon Log File
+
+The daemon writes logs to:
+```
+~/.openclaw/extensions/openclaw-session-audit/state/daemon.log
+```
+
+View live logs:
+```bash
+tail -f ~/.openclaw/extensions/openclaw-session-audit/state/daemon.log
+```
+
+### Enable Debug Logging
+
+For troubleshooting, enable verbose debug logging:
+
+**Method 1: Environment variable in index.ts** (temporary)
+```typescript
+// In index.ts, add before spawning daemon:
+env.SESSION_AUDIT_DEBUG = "true";
+```
+
+**Method 2: Manual daemon with debug**
+```bash
+SESSION_AUDIT_DEBUG=true \
+SESSION_AUDIT_CHANNEL=discord \
+SESSION_AUDIT_TARGET_ID=YOUR_CHANNEL_ID \
+npx tsx ~/.openclaw/extensions/openclaw-session-audit/src/index.ts
+```
+
+Debug output includes:
+- Tool calls found and processed
+- Events added to batches
+- Batch flush details (event types, counts)
+- Messages built and sent
+
+### Gateway Logs
+
+Check the OpenClaw gateway logs for plugin loading issues:
+```bash
+journalctl --user -u openclaw-gateway.service -f | grep -i session-audit
 ```
 
 ## Message Format
@@ -196,9 +303,37 @@ HH:mm:ss.ms ICON Event details
 
 ### No messages appearing
 1. Verify config in `~/.openclaw/openclaw.json`
-2. Restart gateway: `openclaw gateway restart`
-3. Check daemon: `ps aux | grep daemon.ts`
-4. Check logs: `journalctl --user -u openclaw-gateway.service -f`
+2. Check daemon is running: `ps aux | grep session-audit | grep -v grep`
+3. Check daemon log: `tail -50 ~/.openclaw/extensions/openclaw-session-audit/state/daemon.log`
+4. Check gateway logs: `journalctl --user -u openclaw-gateway.service -f | grep -i session-audit`
+5. Restart gateway: `systemctl --user restart openclaw-gateway.service`
+
+### Tool calls not being captured
+This was a bug in versions < 1.0.11. Update to the latest version:
+```bash
+rm -rf ~/.openclaw/extensions/openclaw-session-audit
+openclaw plugins install openclaw-session-audit
+pkill -f "session-audit"
+systemctl --user restart openclaw-gateway.service
+```
+
+### Multiple daemon instances
+If you see duplicate messages, there may be multiple daemon processes:
+```bash
+# Check process count (should be 5 = 1 daemon tree)
+ps aux | grep "session-audit" | grep -v grep | wc -l
+
+# Kill all and restart
+pkill -f "session-audit"
+systemctl --user restart openclaw-gateway.service
+```
+
+### State file issues
+If events are being skipped or duplicated, try clearing the state:
+```bash
+rm ~/.openclaw/extensions/openclaw-session-audit/state/state.json
+systemctl --user restart openclaw-gateway.service
+```
 
 ### Uninstall
 ```bash

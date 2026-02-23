@@ -65,18 +65,26 @@ function startDaemon(api: OpenClawPluginApi) {
   if (config.rateLimitMs) env.SESSION_AUDIT_RATE_LIMIT_MS = String(config.rateLimitMs);
   if (config.batchWindowMs) env.SESSION_AUDIT_BATCH_WINDOW_MS = String(config.batchWindowMs);
   if (config.agentEmojis) env.SESSION_AUDIT_AGENT_EMOJIS = JSON.stringify(config.agentEmojis);
+  // Debug mode can be enabled via environment variable
+  // env.SESSION_AUDIT_DEBUG_PROCESS_ALL = "true";
+
+  // Log file for daemon output
+  const logFile = join(STATE_DIR, "daemon.log");
+  const fs = require("fs");
+  const logOut = fs.openSync(logFile, "a");
+  const logErr = fs.openSync(logFile, "a");
 
   // Use tsx to run TypeScript directly with ESM support
   const child = spawn("npx", ["tsx", join(__dirname, "src", "index.ts")], {
     detached: true,
-    stdio: "ignore",
+    stdio: ["ignore", logOut, logErr],
     cwd: __dirname,
     env,
     shell: true,
   });
 
   child.unref();
-  api.logger.info(`[session-audit] Started daemon, PID: ${child.pid}`);
+  api.logger.info(`[session-audit] Started daemon, PID: ${child.pid}, logs: ${logFile}`);
 }
 
 function stopDaemon(logger: OpenClawPluginApi["logger"]) {
