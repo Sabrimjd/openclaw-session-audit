@@ -1,6 +1,6 @@
 {
   "name": "openclaw-session-audit",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "Monitor OpenClaw sessions and stream events to any channel (Discord, Telegram, Slack, etc.)",
   "type": "module",
   "main": "index.ts",

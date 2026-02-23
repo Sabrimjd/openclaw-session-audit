@@ -3,6 +3,7 @@
  */
 
 import { createReadStream, existsSync, readdirSync, readFileSync, watch } from "node:fs";
+import type { FSWatcher } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -12,6 +13,9 @@ import { sessionMetadata, getBaseSessionId, getThreadNumber, loadSessionsJson } 
 import { addEvent, pendingEvents, toolCallTimestamps } from "./events.js";
 import { parseDiffStats, extractSenderName } from "./format.js";
 import type { PendingEvent } from "./types.js";
+
+// Track active watchers to avoid duplicates
+const agentWatchers = new Map<string, FSWatcher>();
 
 function isValidSessionFile(filename: string): boolean {
   return /^[a-f0-9-]{36}(-topic-\d+)?\.jsonl$/.test(filename);
@@ -432,22 +436,69 @@ export function startWatcher(): void {
   const agents = discoverAgents();
   let watchCount = 0;
 
+  // Set up watchers for existing agents
   for (const agentName of agents) {
-    const sessionsDir = join(AGENTS_DIR, agentName, "sessions");
-    if (!existsSync(sessionsDir)) continue;
-
-    try {
-      const watcher = watch(sessionsDir, (_eventType: string, filename: string | null) => {
-        if (filename && isValidSessionFile(filename)) {
-          tailFile(filename, agentName).catch(console.error);
-        }
-      });
-      watcher.on("error", (err: Error) => console.error(`[session-audit] Watcher error for ${agentName}:`, err));
+    if (setupAgentWatcher(agentName)) {
       watchCount++;
-    } catch (err) {
-      console.error(`[session-audit] Failed to start watcher for ${agentName}:`, err);
     }
   }
 
   console.error(`[session-audit] Watching ${watchCount} agent session directories`);
+
+  // Also watch the parent directory for NEW agent directories
+  try {
+    const parentWatcher = watch(AGENTS_DIR, (eventType: string, filename: string | null) => {
+      if (filename && eventType === "rename") {
+        const agentPath = join(AGENTS_DIR, filename);
+        const sessionsDir = join(agentPath, "sessions");
+        // Small delay to allow directory to be fully created
+        setTimeout(() => {
+          if (existsSync(agentPath) && existsSync(sessionsDir)) {
+            if (setupAgentWatcher(filename)) {
+              console.error(`[session-audit] Started watching new agent: ${filename}`);
+              // Load sessions.json for the new agent
+              loadSessionsJson(filename);
+            }
+          }
+        }, 100);
+      }
+    });
+    parentWatcher.on("error", (err: Error) => {
+      console.error("[session-audit] Parent directory watcher error:", err);
+    });
+  } catch (err) {
+    console.error("[session-audit] Failed to start parent directory watcher:", err);
+  }
+}
+
+/**
+ * Set up a watcher for a specific agent's sessions directory.
+ * Returns true if watcher was set up, false if already watching or failed.
+ */
+function setupAgentWatcher(agentName: string): boolean {
+  // Don't set up duplicate watchers
+  if (agentWatchers.has(agentName)) {
+    return false;
+  }
+
+  const sessionsDir = join(AGENTS_DIR, agentName, "sessions");
+  if (!existsSync(sessionsDir)) {
+    return false;
+  }
+
+  try {
+    const watcher = watch(sessionsDir, (_eventType: string, filename: string | null) => {
+      if (filename && isValidSessionFile(filename)) {
+        tailFile(filename, agentName).catch(console.error);
+      }
+    });
+    watcher.on("error", (err: Error) => {
+      console.error(`[session-audit] Watcher error for ${agentName}:`, err);
+    });
+    agentWatchers.set(agentName, watcher);
+    return true;
+  } catch (err) {
+    console.error(`[session-audit] Failed to start watcher for ${agentName}:`, err);
+    return false;
+  }
 }
