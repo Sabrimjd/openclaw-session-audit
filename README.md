@@ -74,16 +74,7 @@ openclaw plugins install openclaw-session-audit@1.0.8
 To test local changes without publishing:
 
 ```bash
-# Option 1: Copy individual files (faster iteration)
-cp src/watcher.ts ~/.openclaw/extensions/openclaw-session-audit/src/
-cp src/events.ts ~/.openclaw/extensions/openclaw-session-audit/src/
-cp src/format.ts ~/.openclaw/extensions/openclaw-session-audit/src/
-cp src/message.ts ~/.openclaw/extensions/openclaw-session-audit/src/
-cp src/state.ts ~/.openclaw/extensions/openclaw-session-audit/src/
-cp src/config.ts ~/.openclaw/extensions/openclaw-session-audit/src/
-cp index.ts ~/.openclaw/extensions/openclaw-session-audit/
-
-# Option 2: Copy entire plugin (full refresh)
+# Copy entire plugin
 rm -rf ~/.openclaw/extensions/openclaw-session-audit
 cp -r /path/to/openclaw-session-audit ~/.openclaw/extensions/openclaw-session-audit
 
