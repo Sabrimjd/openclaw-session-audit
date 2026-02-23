@@ -10,6 +10,25 @@ import type { PendingEvent } from "./types.js";
 
 // Track when each session last showed a header
 const lastHeaderTime = new Map<string, number>();
+const HEADER_TTL_MS = 3600000; // 1 hour
+
+// Cleanup interval for stale headers
+let headerCleanupInterval: NodeJS.Timeout | null = null;
+
+function startHeaderCleanup(): void {
+  if (!headerCleanupInterval) {
+    headerCleanupInterval = setInterval(() => {
+      const now = Date.now();
+      for (const [key, time] of lastHeaderTime) {
+        if (now - time > HEADER_TTL_MS) {
+          lastHeaderTime.delete(key);
+        }
+      }
+    }, 300000); // Every 5 minutes
+  }
+}
+
+startHeaderCleanup();
 
 export function buildMessage(groupKey: string, events: PendingEvent[]): string {
   let sessionKey = groupKey;
@@ -67,13 +86,9 @@ export function buildMessage(groupKey: string, events: PendingEvent[]): string {
     totalLen = header.length + 1;
   }
 
-  let skippedCount = 0;
   for (const event of events) {
     const formatted = formatEvent(event);
-    if (!formatted) {
-      skippedCount++;
-      continue; // Skip null results
-    }
+    if (!formatted) continue; // Skip null results
     if (totalLen + formatted.length + 1 > MAX_MESSAGE_LENGTH - 50) {
       const remaining = events.length - lines.length + 1;
       if (remaining > 0) {
@@ -83,13 +98,6 @@ export function buildMessage(groupKey: string, events: PendingEvent[]): string {
     }
     lines.push(formatted);
     totalLen += formatted.length + 1;
-  }
-
-  if (skippedCount > 0) {
-    console.error(`[session-audit] DEBUG: buildMessage skipped ${skippedCount} null events`);
-  }
-  if (process.env.SESSION_AUDIT_DEBUG) {
-    console.error(`[session-audit] DEBUG: buildMessage output ${lines.length} lines from ${events.length} events`);
   }
 
   return lines.join("\n");
@@ -102,14 +110,19 @@ export function sendMessage(text: string): void {
   }
 
   const truncated = truncateText(text, MAX_MESSAGE_LENGTH);
-  if (process.env.SESSION_AUDIT_DEBUG) {
-    console.error(`[session-audit] DEBUG: sendMessage channel=${CONFIG.channel} target=${CONFIG.targetId} length=${truncated.length}`);
-  }
 
+  // spawn without shell:true is safe from command injection
   const child = spawn(OPENCLAW_BIN, [
     "message", "send", "--channel", CONFIG.channel,
     "--target", CONFIG.targetId, "--message", truncated, "--silent",
-  ], { stdio: "ignore" });
+  ], { 
+    stdio: "ignore",
+    shell: false  // Explicit for security clarity
+  });
+
+  child.on("error", (err) => {
+    console.error("[session-audit] Failed to send message:", err);
+  });
 
   child.unref();
 }

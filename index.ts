@@ -1,9 +1,8 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { spawn } from "node:child_process";
-import { existsSync, unlinkSync, mkdirSync } from "node:fs";
+import { existsSync, unlinkSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = join(__dirname, "state");
@@ -29,28 +28,81 @@ function ensureStateDir() {
   }
 }
 
-function killAllDaemons(): void {
+function readPidFile(): number | null {
   try {
-    // Use pkill to kill all session-audit daemon processes
-    // This ensures we don't have orphaned daemons running
-    execSync('pkill -f "tsx.*session-audit.*index.ts" 2>/dev/null || true');
+    if (existsSync(PID_FILE)) {
+      const pid = parseInt(readFileSync(PID_FILE, "utf8").trim(), 10);
+      if (!isNaN(pid) && pid > 0) {
+        return pid;
+      }
+    }
   } catch {
-    // Ignore errors if no processes found
+    // Ignore errors reading PID file
+  }
+  return null;
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    // Sending signal 0 checks if process exists without killing it
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function killDaemonByPid(): boolean {
+  const pid = readPidFile();
+  if (pid === null) {
+    return false;
+  }
+  
+  if (!isProcessRunning(pid)) {
+    // Stale PID file - clean it up
+    try {
+      unlinkSync(PID_FILE);
+    } catch {
+      // Ignore cleanup errors
+    }
+    return false;
+  }
+  
+  try {
+    // Try graceful shutdown first
+    process.kill(pid, "SIGTERM");
+    
+    // Wait briefly for graceful shutdown
+    let attempts = 0;
+    const maxAttempts = 10;
+    while (attempts < maxAttempts && isProcessRunning(pid)) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+      attempts++;
+    }
+    
+    // If still running, force kill
+    if (isProcessRunning(pid)) {
+      process.kill(pid, "SIGKILL");
+    }
+    
+    return true;
+  } catch {
+    return false;
+  } finally {
+    // Clean up PID file
+    try {
+      unlinkSync(PID_FILE);
+    } catch {
+      // Ignore cleanup errors
+    }
   }
 }
 
 function startDaemon(api: OpenClawPluginApi) {
   ensureStateDir();
 
-  // Kill ALL existing daemon processes first to prevent duplicates
-  killAllDaemons();
-
-  // Clean up PID file
-  if (existsSync(PID_FILE)) {
-    try {
-      unlinkSync(PID_FILE);
-    } catch {}
-  }
+  // Kill existing daemon by PID (not by pkill pattern)
+  killDaemonByPid();
 
   const config = getConfig(api);
 
@@ -65,38 +117,27 @@ function startDaemon(api: OpenClawPluginApi) {
   if (config.rateLimitMs) env.SESSION_AUDIT_RATE_LIMIT_MS = String(config.rateLimitMs);
   if (config.batchWindowMs) env.SESSION_AUDIT_BATCH_WINDOW_MS = String(config.batchWindowMs);
   if (config.agentEmojis) env.SESSION_AUDIT_AGENT_EMOJIS = JSON.stringify(config.agentEmojis);
-  // Debug mode can be enabled via environment variable
-  // env.SESSION_AUDIT_DEBUG_PROCESS_ALL = "true";
-
-  // Log file for daemon output
-  const logFile = join(STATE_DIR, "daemon.log");
-  const fs = require("fs");
-  const logOut = fs.openSync(logFile, "a");
-  const logErr = fs.openSync(logFile, "a");
 
   // Use tsx to run TypeScript directly with ESM support
+  // IMPORTANT: shell: false is required for security (prevents command injection)
   const child = spawn("npx", ["tsx", join(__dirname, "src", "index.ts")], {
     detached: true,
-    stdio: ["ignore", logOut, logErr],
+    stdio: "ignore",
     cwd: __dirname,
     env,
-    shell: true,
+    shell: false,
   });
 
   child.unref();
-  api.logger.info(`[session-audit] Started daemon, PID: ${child.pid}, logs: ${logFile}`);
+  api.logger.info(`[session-audit] Started daemon, PID: ${child.pid}`);
 }
 
 function stopDaemon(logger: OpenClawPluginApi["logger"]) {
-  // Kill all daemon processes using pkill for consistency
-  killAllDaemons();
-  logger.info(`[session-audit] Stopped all daemon processes`);
-
-  // Clean up PID file
-  if (existsSync(PID_FILE)) {
-    try {
-      unlinkSync(PID_FILE);
-    } catch {}
+  const killed = killDaemonByPid();
+  if (killed) {
+    logger.info(`[session-audit] Stopped daemon process`);
+  } else {
+    logger.info(`[session-audit] No daemon process found`);
   }
 }
 
