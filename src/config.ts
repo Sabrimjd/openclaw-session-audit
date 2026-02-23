@@ -35,6 +35,31 @@ export const TOOL_ICONS: Record<string, string> = {
   list_tasks: "📋", cancel_task: "🛑", list_agents: "📋", show_metrics: "📊",
 };
 
+function safeParseAgentEmojis(jsonStr: string | undefined): Record<string, string> {
+  if (!jsonStr) return { clawd: "🦞" };
+  
+  try {
+    const parsed = JSON.parse(jsonStr);
+    
+    // Validate it's an object with string values
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      console.error("[session-audit] SESSION_AUDIT_AGENT_EMOJIS must be a JSON object");
+      return { clawd: "🦞" };
+    }
+    
+    const result: Record<string, string> = { clawd: "🦞" };
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof key === "string" && typeof value === "string") {
+        result[key] = value;
+      }
+    }
+    return result;
+  } catch (err) {
+    console.error("[session-audit] Failed to parse SESSION_AUDIT_AGENT_EMOJIS:", err);
+    return { clawd: "🦞" };
+  }
+}
+
 export function loadConfig(): Config {
   const defaults: Config = {
     channel: "",
@@ -56,20 +81,25 @@ export function loadConfig(): Config {
     defaults.targetId = process.env.SESSION_AUDIT_TARGET_ID;
   }
   if (process.env.SESSION_AUDIT_RATE_LIMIT_MS) {
-    defaults.rateLimitMs = parseInt(process.env.SESSION_AUDIT_RATE_LIMIT_MS, 10);
+    const parsed = parseInt(process.env.SESSION_AUDIT_RATE_LIMIT_MS, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      defaults.rateLimitMs = parsed;
+    }
   }
   if (process.env.SESSION_AUDIT_BATCH_WINDOW_MS) {
-    defaults.batchWindowMs = parseInt(process.env.SESSION_AUDIT_BATCH_WINDOW_MS, 10);
+    const parsed = parseInt(process.env.SESSION_AUDIT_BATCH_WINDOW_MS, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      defaults.batchWindowMs = parsed;
+    }
   }
   if (process.env.SESSION_AUDIT_HEADER_INTERVAL_MS) {
-    defaults.headerIntervalMs = parseInt(process.env.SESSION_AUDIT_HEADER_INTERVAL_MS, 10);
+    const parsed = parseInt(process.env.SESSION_AUDIT_HEADER_INTERVAL_MS, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      defaults.headerIntervalMs = parsed;
+    }
   }
   if (process.env.SESSION_AUDIT_AGENT_EMOJIS) {
-    try {
-      defaults.agentEmojis = JSON.parse(process.env.SESSION_AUDIT_AGENT_EMOJIS);
-    } catch (err) {
-      console.error("[session-audit] Failed to parse agent emojis:", err);
-    }
+    defaults.agentEmojis = safeParseAgentEmojis(process.env.SESSION_AUDIT_AGENT_EMOJIS);
   }
 
   return defaults;

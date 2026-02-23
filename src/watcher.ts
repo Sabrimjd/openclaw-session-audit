@@ -5,7 +5,7 @@
 import { createReadStream, existsSync, readdirSync, readFileSync, watch } from "node:fs";
 import type { FSWatcher } from "node:fs";
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve, relative } from "node:path";
 import { createInterface } from "node:readline";
 import { AGENTS_DIR, MAX_FILE_SIZE } from "./config.js";
 import { state, hasSeenId, hasBeenSeen } from "./state.js";
@@ -19,6 +19,18 @@ const agentWatchers = new Map<string, FSWatcher>();
 
 function isValidSessionFile(filename: string): boolean {
   return /^[a-f0-9-]{36}(-topic-\d+)?\.jsonl$/.test(filename);
+}
+
+function isPathWithinSessions(filePath: string, sessionsDir: string): boolean {
+  try {
+    const resolved = resolve(filePath);
+    const resolvedDir = resolve(sessionsDir);
+    const rel = relative(resolvedDir, resolved);
+    // Path is within sessionsDir if relative path doesn't start with ..
+    return !rel.startsWith('..') && !rel.startsWith('/');
+  } catch {
+    return false;
+  }
 }
 
 function discoverAgents(): string[] {
@@ -43,6 +55,12 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
   if (!isValidSessionFile(filename)) return;
   const sessionsDir = join(AGENTS_DIR, agentName, "sessions");
   const filepath = join(sessionsDir, filename);
+
+  // Security: Validate path is within sessions directory
+  if (!isPathWithinSessions(filepath, sessionsDir)) {
+    console.error(`[session-audit] Path traversal attempt blocked: ${filename}`);
+    return;
+  }
 
   // Use namespaced offset key to avoid conflicts between agents
   const offsetKey = `${agentName}:${filename}`;
@@ -358,6 +376,13 @@ export async function scanAllFiles(): Promise<void> {
       const files = readdirSync(sessionsDir).filter((f: string) => isValidSessionFile(f));
       for (const file of files) {
         const filepath = join(sessionsDir, file);
+        
+        // Security: Validate path is within sessions directory
+        if (!isPathWithinSessions(filepath, sessionsDir)) {
+          console.error(`[session-audit] Path traversal attempt blocked during scan: ${file}`);
+          continue;
+        }
+        
         try {
           const content = readFileSync(filepath, "utf8");
           const lines = content.split("\n");
@@ -494,6 +519,12 @@ function setupAgentWatcher(agentName: string): boolean {
     });
     watcher.on("error", (err: Error) => {
       console.error(`[session-audit] Watcher error for ${agentName}:`, err);
+      // Remove failed watcher and attempt recovery after delay
+      agentWatchers.delete(agentName);
+      setTimeout(() => {
+        console.error(`[session-audit] Attempting to restart watcher for ${agentName}`);
+        setupAgentWatcher(agentName);
+      }, 5000);
     });
     agentWatchers.set(agentName, watcher);
     return true;
@@ -501,4 +532,19 @@ function setupAgentWatcher(agentName: string): boolean {
     console.error(`[session-audit] Failed to start watcher for ${agentName}:`, err);
     return false;
   }
+}
+
+/**
+ * Stop all active watchers for graceful shutdown.
+ */
+export function stopWatcher(): void {
+  for (const [agentName, watcher] of agentWatchers) {
+    try {
+      watcher.close();
+      console.error(`[session-audit] Stopped watcher for ${agentName}`);
+    } catch (err) {
+      console.error(`[session-audit] Error stopping watcher for ${agentName}:`, err);
+    }
+  }
+  agentWatchers.clear();
 }

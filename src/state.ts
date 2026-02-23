@@ -2,12 +2,36 @@
  * State management for offsets and seen IDs
  */
 
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync, renameSync } from "node:fs";
 import { STATE_DIR, STATE_FILE, PID_FILE, MAX_SEEN_IDS } from "./config.js";
 import type { State } from "./types.js";
 
 export let state: State = { offsets: {}, seenIds: [] };
 export let seenIdsSet: Set<string> = new Set();
+
+// Mutex for state operations
+let stateLock = false;
+const stateQueue: (() => void)[] = [];
+
+function acquireLock(): Promise<void> {
+  return new Promise((resolve) => {
+    if (!stateLock) {
+      stateLock = true;
+      resolve();
+    } else {
+      stateQueue.push(() => resolve());
+    }
+  });
+}
+
+function releaseLock(): void {
+  const next = stateQueue.shift();
+  if (next) {
+    next();
+  } else {
+    stateLock = false;
+  }
+}
 
 export function loadState(): void {
   try {
@@ -22,11 +46,30 @@ export function loadState(): void {
   }
 }
 
-export function saveState(): void {
+export async function saveStateAtomic(): Promise<void> {
+  await acquireLock();
   try {
     mkdirSync(STATE_DIR, { recursive: true });
+    const tempFile = STATE_FILE + ".tmp";
     state.seenIds = [...seenIdsSet];
-    writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+    writeFileSync(tempFile, JSON.stringify(state, null, 2));
+    // Atomic rename
+    renameSync(tempFile, STATE_FILE);
+  } catch (err) {
+    console.error("[session-audit] Failed to save state:", err);
+  } finally {
+    releaseLock();
+  }
+}
+
+export function saveState(): void {
+  // Atomic write pattern: write to temp file, then rename
+  try {
+    mkdirSync(STATE_DIR, { recursive: true });
+    const tempFile = STATE_FILE + ".tmp";
+    state.seenIds = [...seenIdsSet];
+    writeFileSync(tempFile, JSON.stringify(state, null, 2));
+    renameSync(tempFile, STATE_FILE);
   } catch (err) {
     console.error("[session-audit] Failed to save state:", err);
   }
@@ -64,15 +107,46 @@ export function writePidFile(): void {
   }
 }
 
-export function checkSingleInstance(): boolean {
-  // The parent (index.ts) should have killed all daemons already
-  // This is a safety check - clean up any stale PID file
+export function readPidFile(): number | null {
   try {
     if (existsSync(PID_FILE)) {
-      unlinkSync(PID_FILE);
+      const pid = parseInt(readFileSync(PID_FILE, "utf8").trim(), 10);
+      if (!isNaN(pid) && pid > 0) {
+        return pid;
+      }
     }
   } catch {
-    // Ignore errors
+    // Ignore errors reading PID file
   }
+  return null;
+}
+
+export function isProcessRunning(pid: number): boolean {
+  try {
+    // Sending signal 0 checks if process exists without killing it
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function checkSingleInstance(): boolean {
+  const existingPid = readPidFile();
+  
+  if (existingPid !== null) {
+    if (isProcessRunning(existingPid)) {
+      console.error(`[session-audit] Another instance is already running (PID: ${existingPid}), exiting`);
+      return false;
+    }
+    // Stale PID file from dead process
+    console.error(`[session-audit] Stale PID file found (PID: ${existingPid} not running), cleaning up`);
+    try {
+      unlinkSync(PID_FILE);
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+  
   return true;
 }
