@@ -1,7 +1,7 @@
 {
   "id": "openclaw-session-audit",
   "name": "Session Audit",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Monitor OpenClaw sessions and stream events to any channel",
   "main": "index.ts",
   "configSchema": {
@@ -35,6 +35,11 @@
         "type": "object",
         "default": { "clawd": "🦞" },
         "description": "Emoji mappings for agents"
+      },
+      "debug": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable verbose debug logging"
       }
     },
     "required": ["channel", "targetId"]

@@ -16,6 +16,7 @@ interface PluginConfig {
   batchWindowMs?: number;
   maxBatchSize?: number;
   agentEmojis?: Record<string, string>;
+  debug?: boolean;
 }
 
 function getConfig(api: OpenClawPluginApi): PluginConfig {
@@ -65,8 +66,7 @@ function startDaemon(api: OpenClawPluginApi) {
   if (config.rateLimitMs) env.SESSION_AUDIT_RATE_LIMIT_MS = String(config.rateLimitMs);
   if (config.batchWindowMs) env.SESSION_AUDIT_BATCH_WINDOW_MS = String(config.batchWindowMs);
   if (config.agentEmojis) env.SESSION_AUDIT_AGENT_EMOJIS = JSON.stringify(config.agentEmojis);
-  // Debug mode can be enabled via environment variable
-  // env.SESSION_AUDIT_DEBUG_PROCESS_ALL = "true";
+  if (config.debug) env.SESSION_AUDIT_DEBUG = "true";
 
   // Log file for daemon output
   const logFile = join(STATE_DIR, "daemon.log");
@@ -131,6 +131,11 @@ const configSchema = {
       type: "object",
       default: { clawd: "🦞" },
       description: "Emoji mappings for agents"
+    },
+    debug: {
+      type: "boolean",
+      default: false,
+      description: "Enable verbose debug logging"
     }
   },
   required: ["channel", "targetId"]
@@ -142,7 +147,8 @@ const uiHints = {
   rateLimitMs: { label: "Rate Limit (ms)" },
   batchWindowMs: { label: "Batch Window (ms)" },
   maxBatchSize: { label: "Max Batch Size" },
-  agentEmojis: { label: "Agent Emojis" }
+  agentEmojis: { label: "Agent Emojis" },
+  debug: { label: "Debug Mode" }
 };
 
 const plugin = {

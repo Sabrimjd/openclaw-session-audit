@@ -36,7 +36,6 @@ export function reloadAllSessionsJson(): void {
   for (const agentName of agents) {
     loadSessionsJson(agentName);
   }
-  console.error("[session-audit] Reloaded sessions.json for all agents");
 }
 
 export async function tailFile(filename: string, agentName: string): Promise<void> {
@@ -55,20 +54,59 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
     return;
   }
 
-  // Skip history: for new files, start at end (unless DEBUG_PROCESS_ALL is set)
-  const debugProcessAll = process.env.SESSION_AUDIT_DEBUG_PROCESS_ALL === "true";
-  if (state.offsets[offsetKey] === undefined) {
-    if (debugProcessAll) {
-      state.offsets[offsetKey] = 0;  // Process from beginning for debugging
-      console.error(`[session-audit] DEBUG: Processing file from beginning (DEBUG_PROCESS_ALL=true): ${filename}`);
-    } else {
-      state.offsets[offsetKey] = fileStat.size;  // Skip to end
-    }
-  }
-  const offset = state.offsets[offsetKey];
+  // Extract session identifiers early
   const baseSessionId = getBaseSessionId(filename);
   const threadNumber = getThreadNumber(filename);
   const sessionKey = baseSessionId;
+
+  // Skip history: for new files, read first line for metadata, then skip to end
+  const debugProcessAll = process.env.SESSION_AUDIT_DEBUG_PROCESS_ALL === "true";
+  const isNewFile = state.offsets[offsetKey] === undefined;
+  
+  if (isNewFile) {
+    // Reload sessions.json in case it was updated with this new session
+    loadSessionsJson(agentName);
+
+    // Read first line to extract metadata before skipping
+    try {
+      const firstLineStream = createReadStream(filepath, { start: 0, end: 4096, encoding: "utf8" });
+      const firstLineRl = createInterface({ input: firstLineStream });
+      
+      for await (const line of firstLineRl) {
+        if (!line.trim()) continue;
+        try {
+          const row = JSON.parse(line);
+          if (row?.type === "session" && row?.cwd) {
+            const parts = row.cwd.split("/");
+            const projectName = parts[parts.length - 1] || sessionKey;
+            const existing = sessionMetadata.get(sessionKey);
+            if (existing) {
+              existing.cwd = row.cwd;
+              existing.projectName = projectName;
+            } else {
+              sessionMetadata.set(sessionKey, {
+                cwd: row.cwd,
+                projectName,
+                model: "",
+                chatType: "unknown",
+                key: "",
+              });
+            }
+            console.error(`[session-audit] New file metadata: ${filename} cwd=${row.cwd}`);
+          }
+          break; // Only process first line
+        } catch { /* ignore parse errors */ }
+      }
+    } catch { /* ignore errors reading first line */ }
+    
+    if (debugProcessAll) {
+      state.offsets[offsetKey] = 0;
+      console.error(`[session-audit] DEBUG: Processing file from beginning (DEBUG_PROCESS_ALL=true): ${filename}`);
+    } else {
+      state.offsets[offsetKey] = fileStat.size;
+    }
+  }
+  const offset = state.offsets[offsetKey];
 
   try {
     const stream = createReadStream(filepath, { start: offset, encoding: "utf8" });

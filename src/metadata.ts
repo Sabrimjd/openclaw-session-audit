@@ -89,7 +89,6 @@ export function loadSessionsJson(agentName: string): void {
         }
       }
     }
-    console.error(`[session-audit] Loaded sessions from ${agentName}/sessions.json`);
   } catch (err) {
     console.error(`[session-audit] Failed to load ${agentName}/sessions.json:`, err);
   }
