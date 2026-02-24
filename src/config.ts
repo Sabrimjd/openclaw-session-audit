@@ -88,6 +88,10 @@ export const MAX_MESSAGE_LENGTH = CONFIG.maxMessageLength;
 export const HEADER_INTERVAL_MS = CONFIG.headerIntervalMs;
 export const TOOL_PREVIEW_LENGTH = 250;
 
+// JSON event log config
+export const LOG_MAX_SIZE_MB = parseInt(process.env.SESSION_AUDIT_LOG_MAX_SIZE_MB || "50", 10);
+export const LOG_MAX_ARG_LENGTH = parseInt(process.env.SESSION_AUDIT_LOG_MAX_ARG_LENGTH || "1000", 10);
+
 // Rate limiting
 export let retryAfterMs = 0;
 export function setRetryAfter(ms: number) { retryAfterMs = ms; }

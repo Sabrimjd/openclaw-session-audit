@@ -12,6 +12,7 @@ import { state, hasSeenId, hasBeenSeen } from "./state.js";
 import { sessionMetadata, getBaseSessionId, getThreadNumber, loadSessionsJson } from "./metadata.js";
 import { addEvent, pendingEvents, toolCallTimestamps } from "./events.js";
 import { parseDiffStats, extractSenderName } from "./format.js";
+import { logEvent, buildSessionInfo } from "./logger.js";
 import type { PendingEvent } from "./types.js";
 
 // Track active watchers to avoid duplicates
@@ -147,14 +148,22 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
           if (existing) existing.thinkingLevel = level;
 
           const id = `thinking_level:${row.id || Date.now()}`;
+          const ts = new Date(row.timestamp).getTime();
           if (!hasSeenId(id)) {
             addEvent(sessionKey, {
               type: "thinking_level",
               id,
               sessionKey,
-              timestamp: new Date(row.timestamp).getTime(),
+              timestamp: ts,
               data: { level },
               threadNumber: threadNumber || undefined,
+            });
+            logEvent({
+              id,
+              timestamp: ts,
+              type: "thinking_level",
+              session: buildSessionInfo(sessionKey, sessionMetadata.get(sessionKey), threadNumber),
+              data: { level },
             });
           }
         }
@@ -167,14 +176,22 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
           if (existing) existing.model = newModel;
 
           const id = `model_change:${row.id || Date.now()}`;
+          const ts = new Date(row.timestamp).getTime();
           if (!hasSeenId(id)) {
             addEvent(sessionKey, {
               type: "model_change",
               id,
               sessionKey,
-              timestamp: new Date(row.timestamp).getTime(),
+              timestamp: ts,
               data: { oldModel, newModel },
               threadNumber: threadNumber || undefined,
+            });
+            logEvent({
+              id,
+              timestamp: ts,
+              type: "model_change",
+              session: buildSessionInfo(sessionKey, sessionMetadata.get(sessionKey), threadNumber),
+              data: { oldModel, newModel },
             });
           }
         }
@@ -192,14 +209,22 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
         if (rowType === "error" && (row?.error || row?.message)) {
           const errorMsg = row.error || row.message || "Unknown error";
           const id = `error:${row.id || Date.now()}:${String(errorMsg).slice(0, 50)}`;
+          const ts = new Date(row.timestamp).getTime();
           if (!hasSeenId(id)) {
             addEvent(sessionKey, {
               type: "error",
               id,
               sessionKey,
-              timestamp: new Date(row.timestamp).getTime(),
+              timestamp: ts,
               data: { error: String(errorMsg), message: String(errorMsg) },
               threadNumber: threadNumber || undefined,
+            });
+            logEvent({
+              id,
+              timestamp: ts,
+              type: "error",
+              session: buildSessionInfo(sessionKey, sessionMetadata.get(sessionKey), threadNumber),
+              data: { error: String(errorMsg), message: String(errorMsg) },
             });
           }
         }
@@ -241,14 +266,22 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
           const sender = extractSenderName(message.content);
 
           const id = `user_message:${row.id || Date.now()}`;
+          const ts = new Date(row.timestamp).getTime();
           if (!hasSeenId(id)) {
             addEvent(sessionKey, {
               type: "user_message",
               id,
               sessionKey,
-              timestamp: new Date(row.timestamp).getTime(),
+              timestamp: ts,
               data: { sender, preview: text },
               threadNumber: threadNumber || undefined,
+            });
+            logEvent({
+              id,
+              timestamp: ts,
+              type: "user_message",
+              session: buildSessionInfo(sessionKey, sessionMetadata.get(sessionKey), threadNumber),
+              data: { sender, preview: text },
             });
           }
         }
@@ -261,6 +294,7 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
               if (item?.type === "thinking" && (item as { thinking?: string }).thinking) {
                 const thinking = (item as { thinking: string }).thinking;
                 const id = `thinking:${row.id}:${thinking.slice(0, 50)}`;
+                const ts = new Date(row.timestamp).getTime();
                 if (!hasSeenId(id)) {
                   if (process.env.SESSION_AUDIT_DEBUG) {
                     console.error(`[session-audit] DEBUG: Adding thinking event id=${id}`);
@@ -269,9 +303,16 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
                     type: "thinking",
                     id,
                     sessionKey,
-                    timestamp: new Date(row.timestamp).getTime(),
+                    timestamp: ts,
                     data: { preview: thinking },
                     threadNumber: threadNumber || undefined,
+                  });
+                  logEvent({
+                    id,
+                    timestamp: ts,
+                    type: "thinking",
+                    session: buildSessionInfo(sessionKey, sessionMetadata.get(sessionKey), threadNumber),
+                    data: { preview: thinking },
                   });
                 }
               }
@@ -282,18 +323,19 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
                 const name = String(toolItem.name || "");
                 const args = toolItem.arguments || {};
                 const toolId = String(toolItem.id || "").trim() || `${name}:${JSON.stringify(args).slice(0, 100)}`;
+                const ts = new Date(row.timestamp).getTime();
 
                 if (process.env.SESSION_AUDIT_DEBUG) {
                   console.error(`[session-audit] DEBUG: Found toolCall name=${name} id=${toolId} seen=${hasBeenSeen(toolId)}`);
                 }
                 if (!hasSeenId(toolId)) {
-                  toolCallTimestamps.set(toolId, { timestamp: new Date(row.timestamp).getTime(), sessionKey });
+                  toolCallTimestamps.set(toolId, { timestamp: ts, sessionKey });
 
                   addEvent(sessionKey, {
                     type: "toolCall",
                     id: toolId,
                     sessionKey,
-                    timestamp: new Date(row.timestamp).getTime(),
+                    timestamp: ts,
                     data: {
                       name,
                       args,
@@ -301,6 +343,13 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
                       durationMs: null,
                     },
                     threadNumber: threadNumber || undefined,
+                  });
+                  logEvent({
+                    id: toolId,
+                    timestamp: ts,
+                    type: "tool_call",
+                    session: buildSessionInfo(sessionKey, sessionMetadata.get(sessionKey), threadNumber),
+                    data: { name, args, isError: false, durationMs: null },
                   });
                 }
               }
@@ -310,6 +359,7 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
           // Track completion
           if (message.stopReason === "stop" || message.stopReason === "end_turn") {
             const id = `complete:${row.id || Date.now()}`;
+            const ts = new Date(row.timestamp).getTime();
             if (!hasSeenId(id)) {
               let messagePreview = "";
               if (Array.isArray(message.content)) {
@@ -324,13 +374,24 @@ export async function tailFile(filename: string, agentName: string): Promise<voi
                 type: "assistant_complete",
                 id,
                 sessionKey,
-                timestamp: new Date(row.timestamp).getTime(),
+                timestamp: ts,
                 data: {
                   tokens: message.usage?.totalTokens,
                   stopReason: message.stopReason,
                   messagePreview,
                 },
                 threadNumber: threadNumber || undefined,
+              });
+              logEvent({
+                id,
+                timestamp: ts,
+                type: "assistant_complete",
+                session: buildSessionInfo(sessionKey, sessionMetadata.get(sessionKey), threadNumber),
+                data: {
+                  tokens: message.usage?.totalTokens,
+                  stopReason: message.stopReason,
+                  messagePreview,
+                },
               });
             }
           }

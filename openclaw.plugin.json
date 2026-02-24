@@ -1,7 +1,7 @@
 {
   "id": "openclaw-session-audit",
   "name": "Session Audit",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "Monitor OpenClaw sessions and stream events to any channel",
   "main": "index.ts",
   "configSchema": {
@@ -40,6 +40,16 @@
         "type": "boolean",
         "default": false,
         "description": "Enable verbose debug logging"
+      },
+      "logMaxSizeMb": {
+        "type": "number",
+        "default": 50,
+        "description": "Max size in MB for events.jsonl before rotation"
+      },
+      "logMaxArgLength": {
+        "type": "number",
+        "default": 1000,
+        "description": "Max characters for tool call arguments before truncation"
       }
     },
     "required": ["channel", "targetId"]
@@ -50,6 +60,9 @@
     "rateLimitMs": { "label": "Rate Limit (ms)" },
     "batchWindowMs": { "label": "Batch Window (ms)" },
     "maxBatchSize": { "label": "Max Batch Size" },
-    "agentEmojis": { "label": "Agent Emojis" }
+    "agentEmojis": { "label": "Agent Emojis" },
+    "debug": { "label": "Debug Mode" },
+    "logMaxSizeMb": { "label": "Log Max Size (MB)" },
+    "logMaxArgLength": { "label": "Max Arg Length" }
   }
 }

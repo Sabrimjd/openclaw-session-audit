@@ -17,6 +17,8 @@ interface PluginConfig {
   maxBatchSize?: number;
   agentEmojis?: Record<string, string>;
   debug?: boolean;
+  logMaxSizeMb?: number;
+  logMaxArgLength?: number;
 }
 
 function getConfig(api: OpenClawPluginApi): PluginConfig {
@@ -67,6 +69,8 @@ function startDaemon(api: OpenClawPluginApi) {
   if (config.batchWindowMs) env.SESSION_AUDIT_BATCH_WINDOW_MS = String(config.batchWindowMs);
   if (config.agentEmojis) env.SESSION_AUDIT_AGENT_EMOJIS = JSON.stringify(config.agentEmojis);
   if (config.debug) env.SESSION_AUDIT_DEBUG = "true";
+  if (config.logMaxSizeMb) env.SESSION_AUDIT_LOG_MAX_SIZE_MB = String(config.logMaxSizeMb);
+  if (config.logMaxArgLength) env.SESSION_AUDIT_LOG_MAX_ARG_LENGTH = String(config.logMaxArgLength);
 
   // Log file for daemon output
   const logFile = join(STATE_DIR, "daemon.log");
