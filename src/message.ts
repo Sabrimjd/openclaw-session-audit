@@ -26,29 +26,41 @@ export function buildMessage(groupKey: string, events: PendingEvent[]): string {
   }
 
   const info = getProjectInfo(sessionKey);
-  const typeIcon = info.chatType === "direct" ? "👤" : info.chatType === "channel" ? "👥" : "";
-  const subagentTag = info.isSubagent ? "[subagent]" : "";
+  const subagentTag = info.isSubagent ? " [subagent]" : "";
   const threadTag = threadNumber ? ` [thread:${threadNumber}]` : "";
 
-  const parts: string[] = [`${info.emoji}[${info.name}]${info.model}${subagentTag}${threadTag}`];
-  const metaParts: string[] = [];
-  const keyStr = info.keyDisplay || sessionKey.slice(0, 8);
-  if (typeIcon) {
-    metaParts.push(`${typeIcon}${keyStr}`);
-  } else {
-    metaParts.push(keyStr);
+  // Build compact session type:action from key
+  // e.g., "agent:main:cron:xxx:run:xxx" → "cron:run"
+  // e.g., "agent:main:discord:channel:xxx" → "discord:channel"
+  // e.g., "agent:main:subagent:uuid" → "subagent:uuid8"
+  let sessionType = "";
+  const keyParts = info.keyDisplay?.split(":") || [];
+  if (keyParts.length >= 3) {
+    const type = keyParts[2]; // cron, discord, telegram, main, subagent, etc.
+    let action = keyParts[4] || keyParts[3] || ""; // run, channel, user, uuid, etc.
+    
+    // Truncate UUIDs and long numeric IDs to 8 chars
+    if (/^[a-f0-9-]{20,}$/.test(action) || /^[0-9]{15,}$/.test(action)) {
+      action = action.slice(0, 8);
+    }
+    
+    if (type && type !== "main") {
+      sessionType = action && action !== type ? `${type}:${action}` : type;
+    }
   }
-  if (info.cwd) metaParts.push(`📁${info.cwd}`);
-  if (info.contextTokens) metaParts.push(`📊${info.contextTokens}`);
-  if (info.thinkingLevel) metaParts.push(`🧠${info.thinkingLevel}`);
-  if (info.surface) metaParts.push(`🖥️${info.surface}`);
-  if (info.provider) metaParts.push(`🔌${info.provider}`);
-  if (info.updatedAt) metaParts.push(`⏰${info.updatedAt}`);
-  if (info.groupId) metaParts.push(`🔗${info.groupId.slice(0, 8)}`);
 
-  if (metaParts.length > 0) parts.push(metaParts.join(" | "));
+  // Extract percentage from tokens: "21k/262k (8%)" → "8%"
+  const tokenMatch = info.contextTokens?.match(/\((\d+%)\)/);
+  const tokenDisplay = tokenMatch ? `📊${tokenMatch[1]}` : "";
 
-  const header = parts.join(" ");
+  // Build compact header: 🦞 clawd (model) cron:run · 📊8% · low · 14:36
+  const metaParts: string[] = [];
+  if (sessionType) metaParts.push(sessionType);
+  if (tokenDisplay) metaParts.push(tokenDisplay);
+  if (info.thinkingLevel && info.thinkingLevel !== "off") metaParts.push(info.thinkingLevel);
+  if (info.updatedAt) metaParts.push(info.updatedAt);
+
+  const header = `${info.emoji} ${info.name}${info.model}${subagentTag}${threadTag}${metaParts.length ? " · " : ""}${metaParts.join(" · ")}`;
 
   // Check if we should show the header (once per minute per session)
   const now = Date.now();
